@@ -1,0 +1,249 @@
+import pandas as pd
+import numpy as np
+import logging
+from typing import Tuple, Optional, Dict, Any
+from pathlib import Path
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+class DataLoader:
+    """Load raw fraud dataset with validation and sanity analysis.
+
+    Supported datasets:
+    - Kaggle MLG-ULB (creditcard.csv)
+    - Simulated bank data (fraudTrain.csv, fraudTest.csv)
+    """
+
+    def __init__(self, data_dir: str = "Sample_datasets"):
+        self.data_dir = Path(data_dir)
+        self.loaded_data = None
+        self.dataset_info = {}
+
+    def load_kaggle_fraud(
+        self, filename: str = "credit-card-1/creditcard.csv"
+    ) -> pd.DataFrame:
+        """Load Kaggle MLG-ULB credit card fraud dataset.
+
+        Args:
+            filename: Path to creditcard.csv
+
+        Returns:
+            DataFrame with raw data
+        """
+        path = self.data_dir / filename
+
+        logger.info(f"Loading Kaggle fraud dataset from {path}")
+
+        if not path.exists():
+            raise FileNotFoundError(f"Dataset not found: {path}")
+
+        df = pd.read_csv(path)
+
+        logger.info(f"Loaded dataset: {len(df)} rows, {len(df.columns)} columns")
+
+        self.loaded_data = df
+        self.dataset_info = {
+            "source": "kaggle_mlg_ulb",
+            "filename": filename,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_list": list(df.columns),
+        }
+
+        return df
+
+    def load_simulated_fraud(
+        self,
+        train_file: str = "credit-card-2/fraudTrain.csv",
+        test_file: str = "credit-card-2/fraudTest.csv",
+        merge: bool = False,
+    ) -> pd.DataFrame:
+        """Load simulated bank fraud dataset.
+
+        Args:
+            train_file: Path to fraudTrain.csv
+            test_file: Path to fraudTest.csv
+            merge: If True, concatenate train and test
+
+        Returns:
+            DataFrame with raw data
+        """
+        train_path = self.data_dir / train_file
+        test_path = self.data_dir / test_file
+
+        logger.info(f"Loading simulated fraud dataset")
+
+        if not train_path.exists():
+            raise FileNotFoundError(f"Train dataset not found: {train_path}")
+
+        df_train = pd.read_csv(train_path, index_col=0)
+
+        if merge and test_path.exists():
+            df_test = pd.read_csv(test_path, index_col=0)
+            df = pd.concat([df_train, df_test], ignore_index=True)
+            logger.info(f"Merged train+test: {len(df)} rows")
+        else:
+            df = df_train
+            logger.info(f"Loaded train: {len(df)} rows")
+
+        self.loaded_data = df
+        self.dataset_info = {
+            "source": "simulated_bank",
+            "train_file": train_file,
+            "test_file": test_file if test_path.exists() else None,
+            "merge": merge,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_list": list(df.columns),
+        }
+
+        return df
+
+    def load_by_name(self, name: str) -> pd.DataFrame:
+        """Load dataset by name shorthand.
+
+        Args:
+            name: 'kaggle', 'simulated', or 'simulated_merged'
+
+        Returns:
+            Loaded DataFrame
+        """
+        if name.lower() in ["kaggle", "kaggle_fraud", "creditcard"]:
+            return self.load_kaggle_fraud()
+        elif name.lower() in ["simulated", "simulated_fraud"]:
+            return self.load_simulated_fraud()
+        elif name.lower() == "simulated_merged":
+            return self.load_simulated_fraud(merge=True)
+        else:
+            raise ValueError(f"Unknown dataset: {name}")
+
+    def get_info(self) -> Dict[str, Any]:
+        """Get loaded dataset information."""
+        if not self.dataset_info:
+            return {"loaded": False}
+        return self.dataset_info
+
+    def analyze(self, df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
+        """Perform sanity analysis on dataset.
+
+        Args:
+            df: DataFrame to analyze (uses loaded if not provided)
+
+        Returns:
+            Analysis report
+        """
+        if df is None:
+            df = self.loaded_data
+
+        if df is None:
+            return {"error": "No data loaded"}
+
+        analysis = {
+            "shape": df.shape,
+            "columns": list(df.columns),
+            "dtypes": df.dtypes.astype(str).to_dict(),
+            "null_counts": df.isnull().sum().to_dict(),
+            "memory_mb": df.memory_usage(deep=True).sum() / 1024 / 1024,
+        }
+
+        if "Class" in df.columns:
+            analysis["class_distribution"] = {
+                "total": len(df),
+                "fraud": int((df["Class"] == 1).sum()),
+                "legit": int((df["Class"] == 0).sum()),
+                "fraud_ratio": float((df["Class"] == 1).sum() / len(df)),
+            }
+        elif "is_fraud" in df.columns:
+            total_fraud = df["is_fraud"].sum()
+            analysis["class_distribution"] = {
+                "total": len(df),
+                "fraud": int(total_fraud),
+                "legit": int(len(df) - total_fraud),
+                "fraud_ratio": float(total_fraud / len(df)),
+            }
+
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) > 0:
+            analysis["numeric_summary"] = df[numeric_cols].describe().to_dict()
+
+        logger.info(
+            f"Analysis: {analysis['shape'][0]} rows, fraud ratio: {analysis['class_distribution']['fraud_ratio']:.4f}"
+        )
+
+        return analysis
+
+
+def load_raw_dataset(
+    source: str = "kaggle", data_dir: str = "Sample_datasets"
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Convenience function to load raw dataset.
+
+    Args:
+        source: 'kaggle', 'simulated', or 'simulated_merged'
+        data_dir: Directory containing datasets
+
+    Returns:
+        (DataFrame, analysis_report)
+    """
+    loader = DataLoader(data_dir)
+    df = loader.load_by_name(source)
+    analysis = loader.analyze(df)
+    return df, analysis
+
+
+def load_and_analyze(
+    path: str, config_path: Optional[str] = None
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Load and analyze a dataset from path.
+
+    Args:
+        path: Path to CSV file
+        config_path: Optional path to YAML config
+
+    Returns:
+        (DataFrame, analysis_report)
+    """
+    logger.info(f"Loading dataset from {path}")
+
+    df = pd.read_csv(path)
+    logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
+
+    analysis = {
+        "source_path": str(path),
+        "shape": df.shape,
+        "columns": list(df.columns),
+        "null_counts": df.isnull().sum().sum(),
+    }
+
+    label_col = "Class" if "Class" in df.columns else "is_fraud"
+    if label_col in df.columns:
+        pos = (df[label_col] == 1).sum()
+        analysis["class_distribution"] = {
+            "total": len(df),
+            "positive": int(pos),
+            "negative": int(len(df) - pos),
+            "positive_ratio": float(pos / len(df)),
+        }
+
+    return df, analysis
+
+
+def prepare_data_directory(base_dir: str = "data") -> Path:
+    """Ensure data directories exist.
+
+    Args:
+        base_dir: Base data directory
+
+    Returns:
+        Path object
+    """
+    base_path = Path(base_dir)
+
+    for subdir in ["raw", "processed", "splits"]:
+        (base_path / subdir).mkdir(parents=True, exist_ok=True)
+
+    logger.info(f"Data directories prepared: {base_path}")
+
+    return base_path
