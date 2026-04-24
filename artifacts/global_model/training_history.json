@@ -1,0 +1,122 @@
+[
+  {
+    "round": 1,
+    "loss": 0.23132036129633585,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.6666666666666666,
+      "recall": 0.6666666666666666,
+      "f1": 0.6666666666666666,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 2,
+    "loss": 0.23102070887883505,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 3,
+    "loss": 0.23103433847427368,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 4,
+    "loss": 0.23103215297063193,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 5,
+    "loss": 0.23103243112564087,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 6,
+    "loss": 0.23103241125742593,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 7,
+    "loss": 0.2310324509938558,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 8,
+    "loss": 0.23103243112564087,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 9,
+    "loss": 0.2310324509938558,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  },
+  {
+    "round": 10,
+    "loss": 0.2310324509938558,
+    "metrics": {
+      "roc_auc": NaN,
+      "pr_auc": 0.6666666666666666,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "participating_clients": 3
+    }
+  }
+]

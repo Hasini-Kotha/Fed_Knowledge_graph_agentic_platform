@@ -19,6 +19,7 @@ class DataValidator:
     - Duplicate columns
     - Empty outputs
     - Data type consistency
+    - Class distribution issues
     """
 
     def __init__(self, schema=None):

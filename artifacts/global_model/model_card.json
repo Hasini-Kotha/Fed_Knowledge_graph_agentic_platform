@@ -1,0 +1,19 @@
+{
+    "model_type": "TabularMLP",
+    "input_dim": 30,
+    "hidden_dims": [
+        64,
+        32
+    ],
+    "trained_rounds": 10,
+    "selected_round": 10,
+    "selection_metric": "pr_auc",
+    "global_test_pr_auc": 0.2849306247131576,
+    "global_test_roc_auc": 0.8435465768799102,
+    "global_test_f1": 0.019801980198019802,
+    "optimal_threshold": 0.1,
+    "dataset": "MLG-ULB creditcardfraud",
+    "num_clients": 3,
+    "platform": "Flower FedAvg",
+    "handoff_note": "Ready for Prediction Layer. Load FINAL_global_model.pt with model_card.json for inference."
+}

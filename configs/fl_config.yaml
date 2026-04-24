@@ -1,0 +1,13 @@
+batch_size: 256
+fraction_evaluate: 1.0
+fraction_fit: 1.0
+local_epochs: 3
+lr: 0.001
+min_available_clients: 3
+min_evaluate_clients: 3
+min_fit_clients: 3
+num_rounds: 10
+secure_update:
+  max_norm: 1.0
+  noise_multiplier: 0.0
+  validate: true
