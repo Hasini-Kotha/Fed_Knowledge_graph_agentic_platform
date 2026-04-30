@@ -1,0 +1,17 @@
+# Core ML
+torch>=2.0.0
+scikit-learn>=1.3.0
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Federated Learning
+flwr>=1.6.0           # Flower framework (simulation mode)
+
+# Config
+pyyaml>=6.0
+
+# Optional: GPU support (uncomment if CUDA is available)
+# torch>=2.0.0+cu118   # Replace above torch line with this for CUDA 11.8
+
+# Optional: Ray backend for flwr.simulation (not required on Windows/Python 3.13)
+# ray[default]>=2.6.0

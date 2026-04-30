@@ -20,15 +20,15 @@ YAML config structure:
 """
 
 import sys
+import logging
 import argparse
 import yaml
+import pathlib
 import pandas as pd
 import numpy as np
 import torch
-import numpy as np
 
 # Add project root to sys.path
-import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from src.data.preprocess import ClientPreprocessor
@@ -61,6 +61,8 @@ def main():
         
     numeric_cols = config.get("numeric_cols")
     scaler_type = config.get("scaler_type", "robust")
+    # label_col is schema-driven — read from config so any domain works
+    label_col = config.get("label_col", "Class")
     train_config = config.get("train", {})
     eval_config = config.get("eval", {})
     
@@ -78,7 +80,11 @@ def main():
     val_df = pd.read_csv(val_path)
     
     # Step 2 - Preprocess
-    preprocessor = ClientPreprocessor(numeric_cols=numeric_cols, scaler_type=scaler_type)
+    preprocessor = ClientPreprocessor(
+        numeric_cols=numeric_cols,
+        label_col=label_col,
+        scaler_type=scaler_type,
+    )
     X_train, y_train = preprocessor.fit_transform(train_df)
     X_val, y_val = preprocessor.transform(val_df)
     
@@ -128,13 +134,13 @@ def main():
     save_local_checkpoint(model, preprocessor, eval_metrics, checkpoint_path)
     
     # Step 8 - Print Summary
-    fraud_ratio = np.mean(y_train) * 100
+    positive_ratio = np.mean(y_train) * 100
     summary = f"""
     Summary for {client}:
     - Feature dim: {input_dim}
     - Train samples: {len(X_train)}
     - Val samples: {len(X_val)}
-    - Fraud ratio (train): {fraud_ratio:.2f}%
+    - Positive-class ratio (train): {positive_ratio:.2f}%
     - ROC-AUC: {eval_metrics.get('roc_auc', 0.0):.4f}
     - PR-AUC: {eval_metrics.get('pr_auc', 0.0):.4f}
     - F1: {eval_metrics.get('f1', 0.0):.4f}

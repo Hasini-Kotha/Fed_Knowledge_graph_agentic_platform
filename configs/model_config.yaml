@@ -1,4 +1,7 @@
 dropout_rate: 0.2
+# Label column name — change this when switching datasets (e.g. 'is_fraud', 'target')
+label_col: "Class"
+
 eval:
   batch_size: 512
   threshold: 0.5
