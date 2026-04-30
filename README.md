@@ -19,7 +19,7 @@ We propose a **Federated, Knowledge Graph-Enhanced Agentic AI Platform** that en
 All without sharing any raw data between organizations.
 
 ---
-
+  
 ## Objectives
 This project aims to:
 
