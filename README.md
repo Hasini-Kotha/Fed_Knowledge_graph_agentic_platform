@@ -12,7 +12,7 @@ These challenges are particularly critical in high-stakes industries such as fin
 
 We propose a **Federated, Knowledge Graph-Enhanced Agentic AI Platform** that enables:
 - Secure cross-enterprise learning
-- Structured relational reasoning
+- Structured relational reasoning.
 - Transparent, explainable AI decisions
 - Autonomous response actions  
 
