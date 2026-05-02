@@ -1,8 +1,8 @@
 """
 Module to load the final global model checkpoint and evaluate it on the holdout test set.
 """
-
 import json
+
 import logging
 import pathlib
 import pandas as pd
