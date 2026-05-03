@@ -43,13 +43,14 @@ test_validate.py
 test_split.py
 run_client_split.py
 
-# Model outputs (future)
+# Model outputs (future) - not source code
 *.pt
 *.pth
 *.ckpt
 *.h5
 *.pkl
-models/
+artifacts/global_model/*.pt
+artifacts/global_model/*.pkl
 checkpoints/
 
 # Logs

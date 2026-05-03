@@ -1,44 +1,25 @@
-# Data Pipeline Configuration
-#=======================
-
-# Data source configuration
+"""Data Pipeline Configuration."""
 data:
-  # Primary dataset: Kaggle MLG-ULB credit card fraud
   source: "kaggle"
   data_dir: "Sample_datasets"
   dataset_file: "credit-card-1/creditcard.csv"
-  
-  # Schema to use
-  schema: "kaggle_mlg_ulb_fraud"
+  mapping_path: "configs/mapping.json"
 
-# Splitting configuration
 split:
   num_clients: 3
-  test_ratio: 0.15        # 15% global holdout
-  val_ratio: 0.20         # 20% of client data for validation
+  test_ratio: 0.15
+  val_ratio: 0.20
   random_seed: 42
-  
-  # Non-IID split options
   non_iid: false
-  sort_by: null          # e.g., "Amount" for non-IID
-  
-  # Output settings
+  sort_by: null
   output_dir: "data/splits"
   prefix: ""
 
-# Output file naming
-files:
-  client_train: "{client_id}_train.csv"
-  client_val: "{client_id}_val.csv"
-  global_test: "global_test.csv"
-  summary: "split_summary.json"
+vectorizer:
+  vector_size: 128
+  scaler_type: "standard"
 
-# Column mapping for schema
 columns:
   label_column: "Class"
   label_positive: 1
   label_negative: 0
-  
-  # Optional columns
-  id_column: null
-  timestamp_column: "Time"

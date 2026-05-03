@@ -1,168 +1,396 @@
-"""
-Custom FedAvg strategy for federated learning platform.
+"""FL Strategy — FedProx, WeightedFedAvg, and TrimmedMean aggregation.
+
+Implements professional-grade federated aggregation strategies with:
+- FedProx: Proximal term to penalize local model drift
+- WeightedFedAvg: Sample-size weighted averaging with checkpointing
+- TrimmedMean: Byzantine fault tolerance via outlier filtering
 """
 
 import logging
 import json
-import pathlib
-import torch
 import numpy as np
+import torch
+from pathlib import Path
+from typing import Dict, List, Tuple, Any, Optional
+
 import flwr as fl
-from typing import List, Tuple, Dict, Any, Optional, Union
+from flwr.server.strategy import FedAvg
 
 logger = logging.getLogger(__name__)
 
-class WeightedFedAvg(fl.server.strategy.FedAvg):
+
+class WeightedFedAvg(FedAvg):
+    """Federated Averaging with weighted metrics and per-round checkpointing.
+    
+    Extends Flower's FedAvg to:
+    - Compute weighted average of per-client metrics
+    - Save model checkpoint after each round
+    - Log training history for analysis
+    
+    Args:
+        artifacts_dir: Directory to save checkpoints and metrics
+        **kwargs: Passed to FedAvg
     """
-    Custom FedAvg strategy with weighted averaging by client sample count,
-    per-round checkpointing, and metrics logging.
-    """
+    
     def __init__(self, artifacts_dir: str, **kwargs):
         super().__init__(**kwargs)
-        self.artifacts_dir = pathlib.Path(artifacts_dir)
-        self.global_model_dir = self.artifacts_dir / "global_model"
-        self.global_model_dir.mkdir(parents=True, exist_ok=True)
-        self.round_metrics_history = []
-        self._last_fit_round: int = -1
-        self._last_aggregated_params: List[np.ndarray] = []
+        self.artifacts_dir = Path(artifacts_dir)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
         
+        self._cached_parameters = None
+        self.metrics_history = []
+        
+        logger.info(f"WeightedFedAvg initialized, checkpoints: {self.artifacts_dir}")
+    
     def aggregate_fit(
-        self, 
-        server_round: int, 
-        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]], 
-        failures: List[Union[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes], BaseException]]
-    ) -> Tuple[Optional[fl.common.Parameters], Dict[str, fl.common.Scalar]]:
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[fl.common.Parameters], Dict[str, Any]]:
+        aggregated = super().aggregate_fit(server_round, results, failures)
         
-        logger.info(f"[Round {server_round}] aggregate_fit called with {len(results)} results and {len(failures)} failures.")
+        if aggregated[0] is not None:
+            self._cached_parameters = aggregated[0]
         
-        if len(failures) > 0:
-            logger.warning(f"[Round {server_round}] Had {len(failures)} failures during fit.")
-            
-        for client_proxy, fit_res in results:
-            client_id = fit_res.metrics.get("client_id", "unknown")
-            train_loss = fit_res.metrics.get("train_loss", "N/A")
-            num_samples = fit_res.num_examples
-            logger.info(f"[Round {server_round}] Result from {client_id}: {num_samples} samples, train_loss: {train_loss}")
-            
-        aggregated_parameters, metrics_dict = super().aggregate_fit(server_round, results, failures)
-
-        # Cache the aggregated weights so aggregate_evaluate can save
-        # a checkpoint with real metrics (FedAvg returns {} from aggregate_fit).
-        if aggregated_parameters is not None:
-            self._last_aggregated_params = fl.common.parameters_to_ndarrays(aggregated_parameters)
-            self._last_fit_round = server_round
-
-        return aggregated_parameters, metrics_dict
-
+        return aggregated
+    
     def aggregate_evaluate(
-        self, 
-        server_round: int, 
-        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.EvaluateRes]], 
-        failures: List[Union[Tuple[fl.server.client_proxy.ClientProxy, fl.common.EvaluateRes], BaseException]]
-    ) -> Tuple[Optional[float], Dict[str, fl.common.Scalar]]:
-        
-        logger.info(f"[Round {server_round}] aggregate_evaluate called with {len(results)} results.")
-        
-        if len(failures) > 0:
-            logger.warning(f"[Round {server_round}] Had {len(failures)} failures during evaluate.")
-            
-        aggregated_loss, _ = super().aggregate_evaluate(server_round, results, failures)
-        
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.EvaluateRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[float], Dict[str, Any]]:
         if not results:
-            return aggregated_loss, {}
+            return None, {}
+        
+        weighted_metrics = {}
+        metric_keys = ["roc_auc", "pr_auc", "f1", "precision", "recall", "accuracy", "loss"]
+        
+        for key in metric_keys:
+            total_weight = 0
+            weighted_sum = 0.0
             
-        total_samples = sum(res.num_examples for _, res in results)
-        
-        aggregated_metrics = {
-            "roc_auc": 0.0,
-            "pr_auc": 0.0,
-            "precision": 0.0,
-            "recall": 0.0,
-            "f1": 0.0
-        }
-        
-        for _, eval_res in results:
-            weight = eval_res.num_examples / total_samples
-            metrics = eval_res.metrics
+            for _, evaluate_res in results:
+                metrics = evaluate_res.metrics
+                weight = evaluate_res.num_examples
+                
+                if key in metrics:
+                    weighted_sum += metrics[key] * weight
+                    total_weight += weight
             
-            for k in aggregated_metrics.keys():
-                # Get the metric or default to 0.0 if not present
-                val = metrics.get(k)
-                if val is not None:
-                    # Flower metrics values can be int, float, str, bytes, bool
-                    try:
-                        aggregated_metrics[k] += float(val) * weight
-                    except (ValueError, TypeError):
-                        pass
+            if total_weight > 0:
+                weighted_metrics[key] = weighted_sum / total_weight
         
-        aggregated_metrics["participating_clients"] = len(results)
-
-        logger.info(f"[Round {server_round}] Aggregated Metrics: {aggregated_metrics}")
-
-        # Save checkpoint here — now we have real metrics (roc_auc, pr_auc, f1).
-        # This replaces the empty-metrics checkpoint that would have been saved
-        # in aggregate_fit (Flower's FedAvg returns {} from aggregate_fit).
-        if self._last_fit_round == server_round and self._last_aggregated_params:
-            self.save_round_checkpoint(server_round, self._last_aggregated_params, aggregated_metrics)
-
-        # Log to history
-        self.round_metrics_history.append({
-            "round": server_round,
-            "loss": aggregated_loss,
-            "metrics": aggregated_metrics
-        })
-
-        return aggregated_loss, aggregated_metrics
-
-    def save_round_checkpoint(self, server_round: int, parameters: List[np.ndarray], metrics: Dict[str, Any]) -> None:
-        """
-        Saves the global model weights and metrics as a .pt checkpoint.
-        """
-        path = self.global_model_dir / f"round_{server_round:03d}_checkpoint.pt"
+        weighted_metrics["round"] = server_round
+        
+        if self._cached_parameters is not None:
+            self.save_round_checkpoint(server_round, self._cached_parameters, weighted_metrics)
+        
+        self.metrics_history.append(weighted_metrics)
+        self.save_metrics_history()
+        
+        logger.info(f"Round {server_round}: loss={weighted_metrics.get('loss', 'N/A'):.4f}, "
+                   f"roc_auc={weighted_metrics.get('roc_auc', 'N/A'):.4f}, "
+                   f"pr_auc={weighted_metrics.get('pr_auc', 'N/A'):.4f}")
+        
+        return weighted_metrics.get("loss"), weighted_metrics
+    
+    def save_round_checkpoint(
+        self,
+        server_round: int,
+        parameters: fl.common.Parameters,
+        metrics: Dict[str, Any]
+    ):
+        checkpoint_path = self.artifacts_dir / f"round_{server_round:03d}_checkpoint.pt"
+        
+        weights = [torch.tensor(p) for p in parameters.tensors]
         
         checkpoint = {
             "round": server_round,
-            "parameters": [p.tolist() for p in parameters],
-            "metrics": metrics
+            "weights": weights,
+            "metrics": metrics,
         }
         
-        torch.save(checkpoint, path)
-        logger.info(f"[Round {server_round}] Checkpoint saved to {path}")
+        torch.save(checkpoint, str(checkpoint_path))
+        logger.info(f"Checkpoint saved: {checkpoint_path}")
+    
+    def save_metrics_history(self):
+        history_path = self.artifacts_dir / "training_history.json"
+        with open(history_path, 'w') as f:
+            json.dump(self.metrics_history, f, indent=2)
 
-    def save_metrics_history(self) -> None:
-        """
-        Saves self.round_metrics_history as a JSON file.
-        """
-        path = self.global_model_dir / "training_history.json"
+
+class FedProxStrategy(fl.server.strategy.FedAvg):
+    """FedProx strategy with proximal term coefficient.
+    
+    The proximal term (mu * ||w - w_global||^2) penalizes local model drift,
+    improving stability across heterogeneous (Non-IID) datasets.
+    """
+    
+    def __init__(
+        self,
+        artifacts_dir: str,
+        mu: float = 0.01,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.mu = mu
+        self.artifacts_dir = Path(artifacts_dir)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self._cached_parameters = None
+        self.metrics_history = []
         
-        with open(path, "w") as f:
-            json.dump(self.round_metrics_history, f, indent=2)
+        logger.info(f"FedProx initialized: mu={mu}")
+    
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[fl.common.Parameters], Dict[str, Any]]:
+        aggregated = super().aggregate_fit(server_round, results, failures)
+        
+        if aggregated[0] is not None:
+            self._cached_parameters = aggregated[0]
+        
+        return aggregated
+    
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.EvaluateRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[float], Dict[str, Any]]:
+        if not results:
+            return None, {}
+        
+        weighted_metrics = {}
+        metric_keys = ["roc_auc", "pr_auc", "f1", "precision", "recall", "accuracy", "loss"]
+        
+        for key in metric_keys:
+            total_weight = 0
+            weighted_sum = 0.0
             
-        logger.info(f"Training history saved to {path}")
+            for _, evaluate_res in results:
+                metrics = evaluate_res.metrics
+                weight = evaluate_res.num_examples
+                
+                if key in metrics:
+                    weighted_sum += metrics[key] * weight
+                    total_weight += weight
+            
+            if total_weight > 0:
+                weighted_metrics[key] = weighted_sum / total_weight
+        
+        weighted_metrics["round"] = server_round
+        weighted_metrics["mu"] = self.mu
+        
+        if self._cached_parameters is not None:
+            self.save_round_checkpoint(server_round, self._cached_parameters, weighted_metrics)
+        
+        self.metrics_history.append(weighted_metrics)
+        self.save_metrics_history()
+        
+        logger.info(f"Round {server_round} (FedProx mu={self.mu}): "
+                   f"loss={weighted_metrics.get('loss', 'N/A'):.4f}, "
+                   f"roc_auc={weighted_metrics.get('roc_auc', 'N/A'):.4f}")
+        
+        return weighted_metrics.get("loss"), weighted_metrics
+    
+    def save_round_checkpoint(
+        self,
+        server_round: int,
+        parameters: fl.common.Parameters,
+        metrics: Dict[str, Any]
+    ):
+        checkpoint_path = self.artifacts_dir / f"round_{server_round:03d}_checkpoint.pt"
+        
+        weights = [torch.tensor(p) for p in parameters.tensors]
+        
+        checkpoint = {
+            "round": server_round,
+            "weights": weights,
+            "metrics": metrics,
+            "strategy": "fedprox",
+            "mu": self.mu,
+        }
+        
+        torch.save(checkpoint, str(checkpoint_path))
+    
+    def save_metrics_history(self):
+        history_path = self.artifacts_dir / "training_history.json"
+        with open(history_path, 'w') as f:
+            json.dump(self.metrics_history, f, indent=2)
+
+
+class TrimmedMeanStrategy(fl.server.strategy.FedAvg):
+    """Trimmed Mean aggregation for Byzantine fault tolerance.
+    
+    Trims the top and bottom beta fraction of weight updates before averaging,
+    filtering out malicious or poor-quality updates.
+    
+    Args:
+        artifacts_dir: Checkpoint directory
+        beta: Fraction to trim from each end (default 0.1 = trim 10%)
+        **kwargs: Passed to FedAvg
+    """
+    
+    def __init__(
+        self,
+        artifacts_dir: str,
+        beta: float = 0.1,
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.beta = beta
+        self.artifacts_dir = Path(artifacts_dir)
+        self.artifacts_dir.mkdir(parents=True, exist_ok=True)
+        self._cached_parameters = None
+        self.metrics_history = []
+        
+        logger.info(f"TrimmedMean initialized: beta={beta}")
+    
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.FitRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[fl.common.Parameters], Dict[str, Any]]:
+        if len(results) < 3:
+            return super().aggregate_fit(server_round, results, failures)
+        
+        all_weights = []
+        for _, fit_res in results:
+            all_weights.append([np.array(p) for p in fit_res.parameters.tensors])
+        
+        n_clients = len(all_weights)
+        n_trim = max(1, int(n_clients * self.beta))
+        
+        trimmed_weights = []
+        for layer_idx in range(len(all_weights[0])):
+            layer_weights = np.stack([w[layer_idx] for w in all_weights])
+            sorted_weights = np.sort(layer_weights, axis=0)
+            
+            if n_trim > 0:
+                trimmed = sorted_weights[n_trim:n_clients-n_trim]
+            else:
+                trimmed = sorted_weights
+            
+            trimmed_mean = np.mean(trimmed, axis=0)
+            trimmed_weights.append(trimmed_mean)
+        
+        aggregated_params = fl.common.ndarrays_to_parameters(trimmed_weights)
+        
+        self._cached_parameters = aggregated_params
+        
+        return aggregated_params, {}
+    
+    def aggregate_evaluate(
+        self,
+        server_round: int,
+        results: List[Tuple[fl.server.client_proxy.ClientProxy, fl.common.EvaluateRes]],
+        failures: List[BaseException]
+    ) -> Tuple[Optional[float], Dict[str, Any]]:
+        if not results:
+            return None, {}
+        
+        weighted_metrics = {}
+        metric_keys = ["roc_auc", "pr_auc", "f1", "precision", "recall", "accuracy", "loss"]
+        
+        for key in metric_keys:
+            total_weight = 0
+            weighted_sum = 0.0
+            
+            for _, evaluate_res in results:
+                metrics = evaluate_res.metrics
+                weight = evaluate_res.num_examples
+                
+                if key in metrics:
+                    weighted_sum += metrics[key] * weight
+                    total_weight += weight
+            
+            if total_weight > 0:
+                weighted_metrics[key] = weighted_sum / total_weight
+        
+        weighted_metrics["round"] = server_round
+        weighted_metrics["beta"] = self.beta
+        
+        if self._cached_parameters is not None:
+            self.save_round_checkpoint(server_round, self._cached_parameters, weighted_metrics)
+        
+        self.metrics_history.append(weighted_metrics)
+        self.save_metrics_history()
+        
+        logger.info(f"Round {server_round} (TrimmedMean beta={self.beta}): "
+                   f"roc_auc={weighted_metrics.get('roc_auc', 'N/A'):.4f}")
+        
+        return weighted_metrics.get("loss"), weighted_metrics
+    
+    def save_round_checkpoint(
+        self,
+        server_round: int,
+        parameters: fl.common.Parameters,
+        metrics: Dict[str, Any]
+    ):
+        checkpoint_path = self.artifacts_dir / f"round_{server_round:03d}_checkpoint.pt"
+        
+        weights = [torch.tensor(p) for p in parameters.tensors]
+        
+        checkpoint = {
+            "round": server_round,
+            "weights": weights,
+            "metrics": metrics,
+            "strategy": "trimmed_mean",
+            "beta": self.beta,
+        }
+        
+        torch.save(checkpoint, str(checkpoint_path))
+    
+    def save_metrics_history(self):
+        history_path = self.artifacts_dir / "training_history.json"
+        with open(history_path, 'w') as f:
+            json.dump(self.metrics_history, f, indent=2)
+
 
 def build_strategy(
     artifacts_dir: str,
     fl_config: Dict[str, Any],
-    initial_parameters: Optional[fl.common.Parameters] = None,
-) -> WeightedFedAvg:
-    """Create a WeightedFedAvg strategy from fl_config.
-
+    initial_parameters: fl.common.Parameters,
+    strategy_type: str = "fedprox"
+) -> fl.server.strategy.Strategy:
+    """Factory to create the appropriate FL strategy.
+    
     Args:
-        artifacts_dir: Directory for checkpoints and metrics history.
-        fl_config: Dictionary parsed from configs/fl_config.yaml.
-        initial_parameters: Server-side initial weights passed to Flower's
-            FedAvg base class via __init__ (not post-init attribute injection).
-
+        artifacts_dir: Checkpoint directory
+        fl_config: FL configuration dict
+        initial_parameters: Initial model weights
+        strategy_type: 'fedavg', 'fedprox', or 'trimmed_mean'
+        
     Returns:
-        Configured WeightedFedAvg instance.
+        Flower strategy instance
     """
-    return WeightedFedAvg(
-        artifacts_dir=artifacts_dir,
-        initial_parameters=initial_parameters,
-        fraction_fit=fl_config.get("fraction_fit", 1.0),
-        fraction_evaluate=fl_config.get("fraction_evaluate", 1.0),
-        min_fit_clients=fl_config.get("min_fit_clients", 3),
-        min_evaluate_clients=fl_config.get("min_evaluate_clients", 3),
-        min_available_clients=fl_config.get("min_available_clients", 3),
-        evaluate_metrics_aggregation_fn=None,  # Overridden in aggregate_evaluate
-    )
+    common_args = {
+        "fraction_fit": fl_config.get("fraction_fit", 1.0),
+        "fraction_evaluate": fl_config.get("fraction_evaluate", 1.0),
+        "min_fit_clients": fl_config.get("min_clients", 3),
+        "min_evaluate_clients": fl_config.get("min_clients", 3),
+        "min_available_clients": fl_config.get("min_clients", 3),
+        "initial_parameters": initial_parameters,
+        "accept_failures": False,
+    }
+    
+    if strategy_type == "fedprox":
+        return FedProxStrategy(
+            artifacts_dir=artifacts_dir,
+            mu=fl_config.get("mu", 0.01),
+            **common_args
+        )
+    elif strategy_type == "trimmed_mean":
+        return TrimmedMeanStrategy(
+            artifacts_dir=artifacts_dir,
+            beta=fl_config.get("beta", 0.1),
+            **common_args
+        )
+    else:
+        return WeightedFedAvg(artifacts_dir=artifacts_dir, **common_args)

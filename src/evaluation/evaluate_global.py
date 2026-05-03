@@ -1,146 +1,122 @@
-"""
-Module to load the final global model checkpoint and evaluate it on the holdout test set.
-"""
-import json
+"""Global Model Evaluation."""
 
+import json
 import logging
-import pathlib
-import pandas as pd
 import numpy as np
 import torch
-from typing import Tuple, Dict, Any, List
+from pathlib import Path
+from typing import Dict, Any, Optional
 
-from src.models.mlp import create_model, TabularMLP
-from src.data.preprocess import ClientPreprocessor
-from src.models.train_local import evaluate_client
-from src.evaluation.metrics import print_metrics_report, format_confusion_matrix, compute_optimal_threshold
+from src.core.metadata_engine import MetadataMapper
+from src.core.vectorizer import DynamicVectorizer
+from src.models import create_model
+from src.models.train_engine import predict_proba, evaluate_model
+from src.evaluation.metrics import compute_optimal_threshold, print_metrics_report
 
 logger = logging.getLogger(__name__)
 
-def load_best_checkpoint(global_model_dir: str, metric: str = "pr_auc") -> Tuple[List[np.ndarray], Dict[str, Any], int]:
-    """
-    Scans global_model_dir for round checkpoints, returns the best one by metric.
-    """
-    path_obj = pathlib.Path(global_model_dir)
-    checkpoints = list(path_obj.glob("round_*_checkpoint.pt"))
+
+def load_best_checkpoint(
+    global_model_dir: str = "artifacts/global_model",
+    metric: str = "pr_auc"
+) -> Optional[Dict[str, Any]]:
+    """Load the best checkpoint by a given metric."""
+    checkpoint_dir = Path(global_model_dir)
     
+    if not checkpoint_dir.exists():
+        logger.error(f"Checkpoint directory not found: {checkpoint_dir}")
+        return None
+    
+    checkpoints = list(checkpoint_dir.glob("round_*_checkpoint.pt"))
     if not checkpoints:
-        raise FileNotFoundError(f"No round checkpoints found in {global_model_dir}")
-        
-    best_round = -1
-    best_score = -1.0
-    best_params = None
-    best_metrics = None
+        logger.error("No checkpoints found")
+        return None
+    
+    best_ckpt = None
+    best_value = -float('inf')
     
     for ckpt_path in checkpoints:
-        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        metrics = checkpoint["metrics"]
-        score = metrics.get(metric, 0.0)
-        
-        if score > best_score:
-            best_score = score
-            best_round = checkpoint["round"]
-            # Convert nested lists back to np.ndarray
-            best_params = [np.array(p) for p in checkpoint["parameters"]]
-            best_metrics = metrics
-            
-    logger.info(f"Selected best round {best_round} based on {metric}={best_score:.4f}")
-    return best_params, best_metrics, best_round
+        ckpt = torch.load(str(ckpt_path), map_location="cpu")
+        value = ckpt.get("metrics", {}).get(metric, 0)
+        if value > best_value:
+            best_value = value
+            best_ckpt = ckpt
+    
+    logger.info(f"Best checkpoint: round {best_ckpt['round']} ({metric}={best_value:.4f})")
+    return best_ckpt
+
 
 def evaluate_global_model(
-    parameters: List[np.ndarray], 
-    global_test_csv: str, 
-    preprocessor_path: str, 
-    model_config: Dict[str, Any], 
-    eval_config: Dict[str, Any]
+    checkpoint: Dict[str, Any],
+    global_test_csv: str,
+    mapping_path: str,
+    vectorizer_path: str,
+    model_config: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """
-    Loads global_test.csv, applies preprocessor, sets weights, evaluates.
-    """
-    logger.info(f"Loading global test data from {global_test_csv}")
-    df_test = pd.read_csv(global_test_csv)
+    """Evaluate global model on holdout test set."""
+    import pandas as pd
     
-    preprocessor = ClientPreprocessor.load(preprocessor_path)
-    X_test, y_test = preprocessor.transform(df_test)
+    mapper = MetadataMapper(mapping_path)
+    vectorizer = DynamicVectorizer.load(vectorizer_path)
     
-    input_dim = preprocessor.get_feature_dim()
-    model = create_model(input_dim=input_dim, config=model_config)
-    model.set_parameters(parameters)
+    test_df = pd.read_csv(global_test_csv)
+    X_test = vectorizer.transform(test_df, mapper)
+    y_test = test_df[mapper.get_target_column()].values.astype(np.float32)
     
-    logger.info("Evaluating global model on test set...")
-    metrics = evaluate_client(model, X_test, y_test, eval_config)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    input_dim = X_test.shape[1]
+    model_type = model_config.get("model_type", "mlp")
+    
+    model = create_model(input_dim, model_config, model_type).to(device)
+    
+    if "weights" in checkpoint:
+        weights = checkpoint["weights"]
+        if isinstance(weights, list) and len(weights) > 0:
+            model.set_parameters(weights)
+    
+    eval_config = {"batch_size": model_config.get("eval_batch_size", 512)}
+    metrics = evaluate_model(model, X_test, y_test, device, eval_config["batch_size"])
+    
+    probs = predict_proba(model, X_test, device, eval_config["batch_size"])
+    optimal_threshold = compute_optimal_threshold(y_test, probs, metric="f1")
+    metrics["optimal_threshold"] = optimal_threshold
+    
+    logger.info(f"Global model evaluation complete:")
+    for k, v in metrics.items():
+        logger.info(f"  {k}: {v:.4f}")
     
     return metrics
 
+
 def generate_evaluation_report(
-    round_number: int, 
-    round_metrics: Dict[str, Any], 
-    global_metrics: Dict[str, Any], 
-    output_path: str
-) -> None:
-    """
-    Creates a comprehensive text report of the final evaluation.
-    """
-    path_obj = pathlib.Path(output_path)
-    path_obj.parent.mkdir(parents=True, exist_ok=True)
+    round_number: int,
+    round_metrics: Dict[str, Any],
+    global_metrics: Dict[str, Any],
+    output_path: str = "artifacts/reports"
+):
+    """Generate comparison report."""
+    Path(output_path).mkdir(parents=True, exist_ok=True)
     
-    report = [
-        "============================================",
-        "Global Model Evaluation Report",
-        "============================================",
-        "",
-        f"Best Round Selected: Round {round_number} (Selection metric: pr_auc)",
-        "",
-        "--- Final Round FL Metrics (Validation) ---",
-        f"ROC-AUC:   {round_metrics.get('roc_auc', 0.0):.4f}",
-        f"PR-AUC:    {round_metrics.get('pr_auc', 0.0):.4f}",
-        f"Precision: {round_metrics.get('precision', 0.0):.4f}",
-        f"Recall:    {round_metrics.get('recall', 0.0):.4f}",
-        f"F1:        {round_metrics.get('f1', 0.0):.4f}",
-        "",
-        "--- Global Holdout Test Metrics ---",
-        f"ROC-AUC:   {global_metrics.get('roc_auc', 0.0):.4f}",
-        f"PR-AUC:    {global_metrics.get('pr_auc', 0.0):.4f}",
-        f"Precision: {global_metrics.get('precision', 0.0):.4f}",
-        f"Recall:    {global_metrics.get('recall', 0.0):.4f}",
-        f"F1:        {global_metrics.get('f1', 0.0):.4f}"
-    ]
+    report = {
+        "best_round": round_number,
+        "fl_validation": round_metrics,
+        "global_holdout": global_metrics,
+    }
     
-    if "confusion_matrix" in global_metrics:
-        try:
-            # Handle string-encoded lists from flower transport or actual lists
-            cm = global_metrics["confusion_matrix"]
-            if isinstance(cm, str):
-                import ast
-                cm = ast.literal_eval(cm)
-            report.append(format_confusion_matrix(cm))
-        except:
-            pass
-            
-    report.extend([
-        "",
-        f"Threshold Used: {global_metrics.get('optimal_threshold', 0.5):.2f}",
-        "",
-        "Interpretation:",
-        "High recall captures more fraud at the cost of false positives.",
-        "The model demonstrates effective cross-client generalization.",
-        "",
-        "Next Steps:",
-        "This global model is ready for the Prediction Layer. Connect via inference API."
-    ])
+    json_path = Path(output_path) / "global_evaluation_report.json"
+    with open(json_path, 'w') as f:
+        json.dump(report, f, indent=2, default=str)
     
-    report_text = "\n".join(report)
-    
-    with open(path_obj, "w") as f:
-        f.write(report_text)
-        
-    logger.info(f"Evaluation report written to {output_path}")
-    
-    json_path = path_obj.with_suffix(".json")
-    with open(json_path, "w") as f:
-        # Convert any un-serializable items
-        clean_metrics = {}
+    txt_path = Path(output_path) / "global_evaluation_report.txt"
+    with open(txt_path, 'w') as f:
+        f.write(f"Global Model Evaluation Report\n")
+        f.write(f"=" * 40 + "\n\n")
+        f.write(f"Best Round: {round_number}\n\n")
+        f.write("FL Validation Metrics:\n")
+        for k, v in round_metrics.items():
+            f.write(f"  {k}: {v:.4f}\n")
+        f.write("\nGlobal Holdout Metrics:\n")
         for k, v in global_metrics.items():
-            if isinstance(v, (int, float, str, list, bool)):
-                clean_metrics[k] = v
-        json.dump(clean_metrics, f, indent=2)
+            f.write(f"  {k}: {v:.4f}\n")
+    
+    logger.info(f"Reports saved to {output_path}")
