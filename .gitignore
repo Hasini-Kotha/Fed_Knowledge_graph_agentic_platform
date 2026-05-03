@@ -51,3 +51,25 @@ run_client_split.py
 *.pkl
 models/
 checkpoints/
+
+# Logs
+*.log
+logs/
+
+# Testing & Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# Environment Variables
+.env
+.env.local
+
+# Build artifacts
+*.so
+*.dylib
+*.dll

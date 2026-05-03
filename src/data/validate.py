@@ -6,7 +6,6 @@ from pathlib import Path
 import json
 import yaml
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -96,15 +95,16 @@ class DataValidator:
                         self.warnings.append(f"Column '{col}' is not numeric type")
 
     def _check_class_distribution(self, df: pd.DataFrame):
-        """Check class distribution for validity."""
-        label_col = self.schema.label_column if self.schema else "Class"
+        """Check class distribution using schema-driven label values."""
+        label_col = self.schema.label_column if self.schema else "label"
+        label_positive = self.schema.label_positive if self.schema else 1
 
         if label_col not in df.columns:
             return
 
         try:
-            pos_count = (df[label_col] == 1).sum()
-            neg_count = (df[label_col] == 0).sum()
+            pos_count = (df[label_col] == label_positive).sum()
+            neg_count = len(df) - pos_count
             total = len(df)
 
             if total == 0:
@@ -112,15 +112,15 @@ class DataValidator:
                 return
 
             pos_ratio = pos_count / total
-
             logger.info(
-                f"Class distribution: {pos_count} positive ({pos_ratio:.4f}), {neg_count} negative"
+                "Class distribution: %d positive (%.4f), %d negative",
+                pos_count, pos_ratio, neg_count,
             )
 
             if pos_ratio == 0:
-                self.warnings.append("No positive class samples found")
+                self.warnings.append("No positive-class samples found")
             elif pos_ratio == 1:
-                self.warnings.append("No negative class samples found")
+                self.warnings.append("No negative-class samples found")
 
         except Exception as e:
             self.warnings.append(f"Could not compute class distribution: {e}")

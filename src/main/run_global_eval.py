@@ -97,9 +97,18 @@ def main():
         
     with open(model_config_path, "r") as f:
         model_config = yaml.safe_load(f)
-        
+
     with open(fl_config_path, "r") as f:
         fl_config = yaml.safe_load(f)
+
+    # Load data config for schema name (used in model card)
+    data_config_path = pathlib.Path("configs/data_config.yaml")
+    data_cfg = {}
+    if data_config_path.exists():
+        with open(data_config_path, "r") as f:
+            _raw = yaml.safe_load(f)
+            data_cfg = _raw.get("data", _raw) if isinstance(_raw, dict) else {}
+
         
     # Ensure a checkpoint exists
     create_mock_checkpoint_if_needed(artifacts_dir, model_config)
@@ -112,12 +121,29 @@ def main():
     
     # Step 2 - Evaluate on Global Holdout
     global_test_csv = data_dir / "global_test.csv"
-    preprocessor_path = artifacts_dir / "preprocessors" / "client_a_preprocessor.pkl"
-    
-    if not global_test_csv.exists():
-        logger.error(f"Global test data missing at {global_test_csv}")
+
+    # Prefer the global preprocessor (fitted server-side on the non-test pool).
+    # Falls back to client_a's preprocessor if the pipeline was run before this fix.
+    global_prep_path = artifacts_dir / "preprocessors" / "global_preprocessor.pkl"
+    fallback_prep_path = artifacts_dir / "preprocessors" / "client_a_preprocessor.pkl"
+
+    if global_prep_path.exists():
+        preprocessor_path = global_prep_path
+        logger.info("Using global preprocessor: %s", preprocessor_path)
+    elif fallback_prep_path.exists():
+        preprocessor_path = fallback_prep_path
+        logger.warning(
+            "global_preprocessor.pkl not found — falling back to client_a_preprocessor.pkl. "
+            "Re-run run_data_pipeline.py to generate the global preprocessor."
+        )
+    else:
+        logger.error("No preprocessor found in %s", artifacts_dir / "preprocessors")
         sys.exit(1)
-        
+
+    if not global_test_csv.exists():
+        logger.error("Global test data missing at %s", global_test_csv)
+        sys.exit(1)
+
     eval_config = {
         "batch_size": 512,
         "threshold": 0.5,
@@ -135,42 +161,24 @@ def main():
     logger.info(f"Global Eval ROC-AUC: {global_eval_metrics.get('roc_auc', 0.0):.4f}")
     logger.info(f"Global Eval PR-AUC: {global_eval_metrics.get('pr_auc', 0.0):.4f}")
     
-    # Step 3 - Find Optimal Threshold on Global Test
+    # Step 3 - Find Optimal Threshold on Global Test using shared predict_proba()
     import pandas as pd
-    import logging
-
-    # Add project root to sys.path
-    sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
-
     from src.data.preprocess import ClientPreprocessor
     from src.models.mlp import create_model
-    from torch.utils.data import DataLoader
-    from src.models.train_local import ClientDataset
-    
-    # Re-run inference to get raw probabilities
+    from src.models.train_local import predict_proba
+
     df_test = pd.read_csv(global_test_csv)
     preprocessor = ClientPreprocessor.load(str(preprocessor_path))
     X_test, y_test = preprocessor.transform(df_test)
-    
+
     model = create_model(input_dim=preprocessor.get_feature_dim(), config=model_config)
     model.set_parameters(best_params)
-    model.eval()
-    
-    dataset = ClientDataset(X_test, y_test)
-    dataloader = DataLoader(dataset, batch_size=512, shuffle=False)
-    
-    all_probs = []
-    with torch.no_grad():
-        for batch_X, _ in dataloader:
-            logits = model(batch_X)
-            probs = torch.sigmoid(logits)
-            all_probs.extend(probs.cpu().numpy())
-            
-    probs = np.array(all_probs).flatten()
-    
-    optimal_threshold = compute_optimal_threshold(y_test, probs, metric="recall")
-    logger.info(f"Improvement: Found optimal threshold {optimal_threshold:.2f} compared to default 0.5")
-    
+
+    probs = predict_proba(model, X_test, batch_size=512, device="cpu")
+
+    optimal_threshold = compute_optimal_threshold(y_test, probs, metric="f1")
+    logger.info("Optimal threshold (F1): %.2f", optimal_threshold)
+
     # Re-evaluate with optimal threshold
     eval_config["threshold"] = optimal_threshold
     global_eval_metrics = evaluate_global_model(
@@ -178,9 +186,10 @@ def main():
         global_test_csv=str(global_test_csv),
         preprocessor_path=str(preprocessor_path),
         model_config=model_config,
-        eval_config=eval_config
+        eval_config=eval_config,
     )
     global_eval_metrics["optimal_threshold"] = optimal_threshold
+
     
     # Step 4 - Compare: Global vs Best Local Baseline
     local_models_dir = artifacts_dir / "local_models"
@@ -232,7 +241,8 @@ def main():
         "global_test_roc_auc": float(global_eval_metrics.get("roc_auc", 0.0)),
         "global_test_f1": float(global_eval_metrics.get("f1", 0.0)),
         "optimal_threshold": float(optimal_threshold),
-        "dataset": "MLG-ULB creditcardfraud",
+        "dataset": data_cfg.get("schema", data_cfg.get("source", "unknown")),
+
         "num_clients": 3,
         "platform": "Flower FedAvg",
         "handoff_note": "Ready for Prediction Layer. Load FINAL_global_model.pt with model_card.json for inference."

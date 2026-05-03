@@ -7,7 +7,6 @@ from typing import Dict, Tuple, List, Optional, Any
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -64,12 +63,15 @@ class ClientSplitter:
         df_work = df.copy()
 
         if non_iid and sort_by:
-            logger.info(f"Non-IID split: sorting by {sort_by}")
+            # Non-IID: sort by column and assign sequential chunks.
+            # Do NOT shuffle — that would destroy the non-IID property.
+            logger.info(f"Non-IID split: sorting by '{sort_by}' (no shuffle).")
             df_work = df_work.sort_values(sort_by).reset_index(drop=True)
-
-        indices = np.arange(len(df_work))
-        np.random.shuffle(indices)
-        df_work = df_work.iloc[indices].reset_index(drop=True)
+        else:
+            # IID: shuffle randomly before splitting.
+            indices = np.arange(len(df_work))
+            np.random.shuffle(indices)
+            df_work = df_work.iloc[indices].reset_index(drop=True)
 
         test_size = int(len(df_work) * self.test_ratio)
 
@@ -369,60 +371,60 @@ def run_full_split(
     return saved_files, stats
 
 
-def create_fraud_split_summary_note(
+
+def create_split_summary_note(
     stats: Dict[str, Any],
     is_non_iid: bool = False,
+    label_positive_name: str = "positive",
     additional_notes: Optional[Dict[str, str]] = None,
 ) -> str:
-    """Create a summary note about the split.
+    """Create a human-readable summary note about the client split.
+
+    Domain-agnostic: uses 'positive_ratio' terminology throughout.
 
     Args:
-        stats: Split statistics
-        is_non_iid: Whether the split is non-IID
-        additional_notes: Additional notes to include
+        stats: Split statistics from compute_split_statistics().
+        is_non_iid: Whether the split is non-IID.
+        label_positive_name: Display name for positive class (default 'positive').
+        additional_notes: Extra key-value notes to append.
 
     Returns:
-        Summary string
+        Formatted summary string.
     """
     note_lines = [
         "=" * 60,
         "CLIENT SPLIT SUMMARY",
         "=" * 60,
         "",
-        f"Split Type: {'NON-IID' if is_non_iid else 'IID (Independent Identically Distributed)'}",
+        f"Split Type: {'NON-IID' if is_non_iid else 'IID (Independently and Identically Distributed)'}",
         "",
         f"Total Samples: {stats['summary']['total_train'] + stats['summary']['total_val'] + stats['global_test']['rows']}",
-        f"  - Training: {stats['summary']['total_train']}",
-        f"  - Validation: {stats['summary']['total_val']}",
+        f"  - Training:    {stats['summary']['total_train']}",
+        f"  - Validation:  {stats['summary']['total_val']}",
         f"  - Global Test: {stats['global_test']['rows']}",
         "",
-        "Fraud Ratios:",
+        f"Positive-Class Ratios ('{label_positive_name}'):",
     ]
-
     for client_id, client_stats in stats["clients"].items():
         note_lines.append(
             f"  {client_id}: "
             f"train={client_stats['train_positive_ratio']:.4f}, "
             f"val={client_stats['val_positive_ratio']:.4f}"
         )
-
-    note_lines.extend(
-        [
-            f"  global_test: {stats['global_test']['positive_ratio']:.4f}",
-            "",
-            "Average Fraud Ratio: {:.4f}".format(
-                stats["summary"]["average_positive_ratio"]
-            ),
-            "",
-        ]
-    )
-
+    note_lines.extend([
+        f"  global_test: {stats['global_test']['positive_ratio']:.4f}",
+        "",
+        "Average Positive Ratio: {:.4f}".format(stats["summary"]["average_positive_ratio"]),
+        "",
+    ])
     if additional_notes:
         note_lines.extend(["Additional Notes:", ""])
         for key, value in additional_notes.items():
             note_lines.append(f"  {key}: {value}")
         note_lines.append("")
-
     note_lines.append("=" * 60)
-
     return "\n".join(note_lines)
+
+
+# Backward-compat alias — prefer create_split_summary_note in new code.
+create_fraud_split_summary_note = create_split_summary_note

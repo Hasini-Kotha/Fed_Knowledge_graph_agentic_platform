@@ -8,6 +8,6 @@ min_evaluate_clients: 3
 min_fit_clients: 3
 num_rounds: 10
 secure_update:
-  max_norm: 1.0
+  max_norm: 2000.0
   noise_multiplier: 0.0
   validate: true

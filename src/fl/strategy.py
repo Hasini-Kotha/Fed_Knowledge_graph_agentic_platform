@@ -23,6 +23,8 @@ class WeightedFedAvg(fl.server.strategy.FedAvg):
         self.global_model_dir = self.artifacts_dir / "global_model"
         self.global_model_dir.mkdir(parents=True, exist_ok=True)
         self.round_metrics_history = []
+        self._last_fit_round: int = -1
+        self._last_aggregated_params: List[np.ndarray] = []
         
     def aggregate_fit(
         self, 
@@ -43,12 +45,13 @@ class WeightedFedAvg(fl.server.strategy.FedAvg):
             logger.info(f"[Round {server_round}] Result from {client_id}: {num_samples} samples, train_loss: {train_loss}")
             
         aggregated_parameters, metrics_dict = super().aggregate_fit(server_round, results, failures)
-        
-        # Save checkpoint if aggregation was successful
+
+        # Cache the aggregated weights so aggregate_evaluate can save
+        # a checkpoint with real metrics (FedAvg returns {} from aggregate_fit).
         if aggregated_parameters is not None:
-            params_list = fl.common.parameters_to_ndarrays(aggregated_parameters)
-            self.save_round_checkpoint(server_round, params_list, metrics_dict)
-            
+            self._last_aggregated_params = fl.common.parameters_to_ndarrays(aggregated_parameters)
+            self._last_fit_round = server_round
+
         return aggregated_parameters, metrics_dict
 
     def aggregate_evaluate(
@@ -93,16 +96,22 @@ class WeightedFedAvg(fl.server.strategy.FedAvg):
                         pass
         
         aggregated_metrics["participating_clients"] = len(results)
-        
+
         logger.info(f"[Round {server_round}] Aggregated Metrics: {aggregated_metrics}")
-        
+
+        # Save checkpoint here — now we have real metrics (roc_auc, pr_auc, f1).
+        # This replaces the empty-metrics checkpoint that would have been saved
+        # in aggregate_fit (Flower's FedAvg returns {} from aggregate_fit).
+        if self._last_fit_round == server_round and self._last_aggregated_params:
+            self.save_round_checkpoint(server_round, self._last_aggregated_params, aggregated_metrics)
+
         # Log to history
         self.round_metrics_history.append({
             "round": server_round,
             "loss": aggregated_loss,
             "metrics": aggregated_metrics
         })
-        
+
         return aggregated_loss, aggregated_metrics
 
     def save_round_checkpoint(self, server_round: int, parameters: List[np.ndarray], metrics: Dict[str, Any]) -> None:
@@ -131,22 +140,29 @@ class WeightedFedAvg(fl.server.strategy.FedAvg):
             
         logger.info(f"Training history saved to {path}")
 
-def build_strategy(artifacts_dir: str, fl_config: Dict[str, Any]) -> WeightedFedAvg:
+def build_strategy(
+    artifacts_dir: str,
+    fl_config: Dict[str, Any],
+    initial_parameters: Optional[fl.common.Parameters] = None,
+) -> WeightedFedAvg:
+    """Create a WeightedFedAvg strategy from fl_config.
+
+    Args:
+        artifacts_dir: Directory for checkpoints and metrics history.
+        fl_config: Dictionary parsed from configs/fl_config.yaml.
+        initial_parameters: Server-side initial weights passed to Flower's
+            FedAvg base class via __init__ (not post-init attribute injection).
+
+    Returns:
+        Configured WeightedFedAvg instance.
     """
-    Creates and returns a WeightedFedAvg instance with settings from fl_config.
-    """
-    fraction_fit = fl_config.get("fraction_fit", 1.0)
-    fraction_evaluate = fl_config.get("fraction_evaluate", 1.0)
-    min_fit_clients = fl_config.get("min_fit_clients", 3)
-    min_available_clients = fl_config.get("min_available_clients", 3)
-    min_evaluate_clients = fl_config.get("min_evaluate_clients", 3)
-    
     return WeightedFedAvg(
         artifacts_dir=artifacts_dir,
-        fraction_fit=fraction_fit,
-        fraction_evaluate=fraction_evaluate,
-        min_fit_clients=min_fit_clients,
-        min_evaluate_clients=min_evaluate_clients,
-        min_available_clients=min_available_clients,
-        evaluate_metrics_aggregation_fn=None # We override aggregate_evaluate instead
+        initial_parameters=initial_parameters,
+        fraction_fit=fl_config.get("fraction_fit", 1.0),
+        fraction_evaluate=fl_config.get("fraction_evaluate", 1.0),
+        min_fit_clients=fl_config.get("min_fit_clients", 3),
+        min_evaluate_clients=fl_config.get("min_evaluate_clients", 3),
+        min_available_clients=fl_config.get("min_available_clients", 3),
+        evaluate_metrics_aggregation_fn=None,  # Overridden in aggregate_evaluate
     )

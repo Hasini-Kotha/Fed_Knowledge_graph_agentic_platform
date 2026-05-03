@@ -1,34 +1,36 @@
 """
 End-to-end baseline runner for a single client.
-This script is Person 2's deliverable. If this runs successfully for all 3 clients, 
-Person 3 can begin Flower integration.
+Demonstrates the full Phase 1-3 dynamic vectorization pipeline.
 
-YAML config structure:
-# configs/model_config.yaml
-# numeric_cols: [Time, V1, V2, ..., V28, Amount]
-# hidden_dims: [64, 32]
-# dropout_rate: 0.2
-# scaler_type: robust
-# train:
-#   epochs: 5
-#   batch_size: 256
-#   lr: 0.001
-#   seed: 42
-# eval:
-#   batch_size: 512
-#   threshold: 0.5
+YAML config structure (configs/model_config.yaml):
+  vector_size: 64          # Phase 1 global contract dimension
+  scaler_type: robust      # 'robust' or 'standard'
+  hidden_dims: [64, 32]
+  dropout_rate: 0.2
+  train:
+    epochs: 5
+    batch_size: 256
+    lr: 0.001
+    seed: 42
+  eval:
+    batch_size: 512
+    threshold: 0.5
+
+Mapping file (configs/mapping.json):
+  The ONLY place where industry-specific column names appear at runtime.
+  Switch datasets by swapping this file — no Python changes required.
 """
 
 import sys
+import logging
 import argparse
 import yaml
+import pathlib
 import pandas as pd
 import numpy as np
 import torch
-import numpy as np
 
 # Add project root to sys.path
-import pathlib
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from src.data.preprocess import ClientPreprocessor
@@ -44,6 +46,8 @@ def main():
     parser.add_argument("--client", type=str, default="client_a", choices=["client_a", "client_b", "client_c"], help="Client ID")
     parser.add_argument("--data_dir", type=str, default="data/splits", help="Directory containing data splits")
     parser.add_argument("--artifacts_dir", type=str, default="artifacts", help="Directory to save artifacts")
+    # Phase 2: each client can override mapping path for their own domain map
+    parser.add_argument("--mapping", type=str, default="configs/mapping.json", help="Path to client's domain mapping JSON")
     
     args = parser.parse_args()
     client = args.client
@@ -59,10 +63,11 @@ def main():
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
         
-    numeric_cols = config.get("numeric_cols")
-    scaler_type = config.get("scaler_type", "robust")
+    scaler_type  = config.get("scaler_type", "robust")
+    vector_size  = config.get("vector_size", 64)
     train_config = config.get("train", {})
-    eval_config = config.get("eval", {})
+    eval_config  = config.get("eval", {})
+    mapping_path = args.mapping  # Phase 2: read from CLI, not hardcoded
     
     logger.info(f"Starting baseline run for {client}")
     
@@ -77,8 +82,14 @@ def main():
     train_df = pd.read_csv(train_path)
     val_df = pd.read_csv(val_path)
     
-    # Step 2 - Preprocess
-    preprocessor = ClientPreprocessor(numeric_cols=numeric_cols, scaler_type=scaler_type)
+    # Step 2 - Dynamic Vectorization (Phase 1, 2, 3)
+    logger.info("Initialising Dynamic Vectorizer from mapping: %s", mapping_path)
+    preprocessor = ClientPreprocessor(
+        mapping_path=mapping_path,
+        vector_size=vector_size,
+        scaler_type=scaler_type,
+    )
+    logger.info("Mapping loaded: %s", preprocessor.get_mapping_summary())
     X_train, y_train = preprocessor.fit_transform(train_df)
     X_val, y_val = preprocessor.transform(val_df)
     
@@ -128,13 +139,13 @@ def main():
     save_local_checkpoint(model, preprocessor, eval_metrics, checkpoint_path)
     
     # Step 8 - Print Summary
-    fraud_ratio = np.mean(y_train) * 100
+    positive_ratio = np.mean(y_train) * 100
     summary = f"""
     Summary for {client}:
     - Feature dim: {input_dim}
     - Train samples: {len(X_train)}
     - Val samples: {len(X_val)}
-    - Fraud ratio (train): {fraud_ratio:.2f}%
+    - Positive-class ratio (train): {positive_ratio:.2f}%
     - ROC-AUC: {eval_metrics.get('roc_auc', 0.0):.4f}
     - PR-AUC: {eval_metrics.get('pr_auc', 0.0):.4f}
     - F1: {eval_metrics.get('f1', 0.0):.4f}

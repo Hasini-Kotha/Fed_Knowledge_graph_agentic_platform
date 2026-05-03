@@ -4,16 +4,16 @@ import logging
 from typing import Tuple, Optional, Dict, Any
 from pathlib import Path
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 class DataLoader:
-    """Load raw fraud dataset with validation and sanity analysis.
+    """Load raw tabular datasets with validation and sanity analysis.
 
-    Supported datasets:
-    - Kaggle MLG-ULB (creditcard.csv)
-    - Simulated bank data (fraudTrain.csv, fraudTest.csv)
+    Supported loaders:
+    - load_kaggle_fraud()         (legacy, Kaggle MLG-ULB creditcard.csv)
+    - load_simulated_fraud()      (legacy, fraudTrain/fraudTest CSVs)
+    - load_tabular_dataset(path)  (domain-agnostic, any CSV)
     """
 
     def __init__(self, data_dir: str = "Sample_datasets"):
@@ -125,22 +125,28 @@ class DataLoader:
             return {"loaded": False}
         return self.dataset_info
 
-    def analyze(self, df: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
-        """Perform sanity analysis on dataset.
+    def analyze(
+        self,
+        df: Optional[pd.DataFrame] = None,
+        label_col: Optional[str] = None,
+        label_positive: int = 1,
+    ) -> Dict[str, Any]:
+        """Perform sanity analysis on a dataset.
 
         Args:
-            df: DataFrame to analyze (uses loaded if not provided)
+            df: DataFrame to analyse (uses last loaded if not provided).
+            label_col: Name of the label column. Auto-detected if None.
+            label_positive: Value of the positive class (default 1).
 
         Returns:
-            Analysis report
+            Analysis report dict.
         """
         if df is None:
             df = self.loaded_data
-
         if df is None:
             return {"error": "No data loaded"}
 
-        analysis = {
+        analysis: Dict[str, Any] = {
             "shape": df.shape,
             "columns": list(df.columns),
             "dtypes": df.dtypes.astype(str).to_dict(),
@@ -148,31 +154,60 @@ class DataLoader:
             "memory_mb": df.memory_usage(deep=True).sum() / 1024 / 1024,
         }
 
-        if "Class" in df.columns:
+        # Auto-detect label column if not provided
+        if label_col is None:
+            for candidate in ["Class", "is_fraud", "label", "target"]:
+                if candidate in df.columns:
+                    label_col = candidate
+                    break
+
+        if label_col and label_col in df.columns:
+            pos = (df[label_col] == label_positive).sum()
+            neg = len(df) - pos
             analysis["class_distribution"] = {
+                "label_column": label_col,
                 "total": len(df),
-                "fraud": int((df["Class"] == 1).sum()),
-                "legit": int((df["Class"] == 0).sum()),
-                "fraud_ratio": float((df["Class"] == 1).sum() / len(df)),
+                "positive": int(pos),
+                "negative": int(neg),
+                "positive_ratio": float(pos / len(df)),
             }
-        elif "is_fraud" in df.columns:
-            total_fraud = df["is_fraud"].sum()
-            analysis["class_distribution"] = {
-                "total": len(df),
-                "fraud": int(total_fraud),
-                "legit": int(len(df) - total_fraud),
-                "fraud_ratio": float(total_fraud / len(df)),
-            }
+            logger.info(
+                "Analysis: %d rows, positive_ratio=%.4f (col='%s')",
+                len(df), float(pos / len(df)), label_col,
+            )
 
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 0:
             analysis["numeric_summary"] = df[numeric_cols].describe().to_dict()
 
-        logger.info(
-            f"Analysis: {analysis['shape'][0]} rows, fraud ratio: {analysis['class_distribution']['fraud_ratio']:.4f}"
-        )
-
         return analysis
+
+    def load_tabular_dataset(
+        self, path: str, index_col: Optional[int] = None
+    ) -> pd.DataFrame:
+        """Domain-agnostic CSV loader. Works with any tabular dataset.
+
+        Args:
+            path: Absolute or relative path to a CSV file.
+            index_col: Passed to pd.read_csv (None by default).
+
+        Returns:
+            Loaded DataFrame.
+        """
+        full_path = self.data_dir / path if not pathlib.Path(path).is_absolute() else pathlib.Path(path)
+        logger.info("Loading tabular dataset from %s", full_path)
+        if not full_path.exists():
+            raise FileNotFoundError(f"Dataset not found: {full_path}")
+        df = pd.read_csv(full_path, index_col=index_col)
+        self.loaded_data = df
+        self.dataset_info = {
+            "source": str(full_path),
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_list": list(df.columns),
+        }
+        logger.info("Loaded: %d rows, %d columns", len(df), len(df.columns))
+        return df
 
 
 def load_raw_dataset(

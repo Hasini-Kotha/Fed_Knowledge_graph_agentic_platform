@@ -113,16 +113,18 @@ def main():
     # Step 3 - Get Initial Parameters
     initial_parameters = get_initial_parameters(model_config, input_dim)
     
-    # Step 4 - Build Strategy
-    strategy = build_strategy(str(artifacts_dir), fl_config)
-    strategy.initial_parameters = initial_parameters
+    # Step 4 - Build Strategy (initial_parameters passed via __init__, not post-init)
+    strategy = build_strategy(str(artifacts_dir), fl_config, initial_parameters=initial_parameters)
     
     # Step 5 - Define client_fn for simulation
+    # Flower simulation uses integer-string CIDs ("0", "1", "2").
+    # Manual fallback uses the same string keys via cid_to_client.
     cid_to_client = {
         "0": "client_a",
         "1": "client_b",
-        "2": "client_c"
+        "2": "client_c",
     }
+    simulation_client_ids = list(cid_to_client.keys())  # ["0", "1", "2"]
     
     def client_fn(cid: str) -> fl.client.NumPyClient:
         client_id = cid_to_client[cid]
@@ -149,26 +151,24 @@ def main():
         )
     except ImportError as e:
         if "ray" in str(e).lower():
-            logger.warning("Ray is not installed or not supported. Falling back to manual Ray-free loop...")
+            logger.warning("Ray unavailable — falling back to manual Ray-free loop.")
             from src.fl.manual_loop import run_manual_simulation
             run_manual_simulation(
                 client_fn=client_fn,
-                num_clients=3,
+                client_ids=simulation_client_ids,
                 num_rounds=num_rounds,
-                strategy=strategy
+                strategy=strategy,
             )
         else:
             raise e
     except Exception as e:
-        logger.error(f"Simulation failed: {e}")
-        # Try manual fallback for other errors too, as Ray often has networking/init issues on Windows
-        logger.info("Attempting manual Ray-free fallback...")
+        logger.error("Simulation failed (%s) — attempting manual fallback.", e)
         from src.fl.manual_loop import run_manual_simulation
         run_manual_simulation(
             client_fn=client_fn,
-            num_clients=3,
+            client_ids=simulation_client_ids,
             num_rounds=num_rounds,
-            strategy=strategy
+            strategy=strategy,
         )
     
     # Step 7 - Save History
