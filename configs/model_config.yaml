@@ -1,6 +1,5 @@
 dropout_rate: 0.2
-# Label column name — change this when switching datasets (e.g. 'is_fraud', 'target')
-label_col: "Class"
+# Removed label_col; target label is now driven by configs/mapping.json
 
 eval:
   batch_size: 512
@@ -8,40 +7,10 @@ eval:
 hidden_dims:
 - 64
 - 32
-numeric_cols:
-- Time
-- V1
-- V2
-- V3
-- V4
-- V5
-- V6
-- V7
-- V8
-- V9
-- V10
-- V11
-- V12
-- V13
-- V14
-- V15
-- V16
-- V17
-- V18
-- V19
-- V20
-- V21
-- V22
-- V23
-- V24
-- V25
-- V26
-- V27
-- V28
-- Amount
+vector_size: 64
 scaler_type: robust
 train:
   batch_size: 256
-  epochs: 5
+  epochs: 10
   lr: 0.001
   seed: 42

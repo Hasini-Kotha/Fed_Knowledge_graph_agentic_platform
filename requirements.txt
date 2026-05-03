@@ -15,3 +15,5 @@ pyyaml>=6.0
 
 # Optional: Ray backend for flwr.simulation (not required on Windows/Python 3.13)
 # ray[default]>=2.6.0
+
+protobuf<4.0.0
