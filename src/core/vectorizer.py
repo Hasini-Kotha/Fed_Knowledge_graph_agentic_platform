@@ -7,7 +7,9 @@ Key features:
 - Automatic feature alignment to global indices
 - Numeric: StandardScaler with configurable imputation
 - Categorical: OneHotEncoder with configurable imputation
+- High-cardinality handling: Top-K + "other" bucket for oversized categoricals
 - Zero-padding for missing global indices (gap logic)
+- Boolean masking for attention (padded positions marked False)
 - PCA reduction for oversized feature sets
 - Save/load fitted parameters for inference consistency
 """
@@ -27,29 +29,89 @@ from sklearn.impute import SimpleImputer
 from sklearn.decomposition import PCA
 
 from src.core.metadata_engine import MetadataMapper, FeatureType, ImputationStrategy
-from src.core.contract import VectorContract
+from src.core.contract import VectorContract, HighCardinalityStrategy
 
 logger = logging.getLogger(__name__)
 
 
+class TopKEncoder:
+    """One-hot encoder that keeps only the top-K most frequent categories.
+
+    Categories beyond the top-K are mapped to a single "other" column.
+    This prevents high-cardinality features from exceeding allocated space.
+
+    Args:
+        n_categories: Number of top categories to keep (1 slot is reserved for "other").
+    """
+
+    def __init__(self, n_categories: int):
+        self.n_categories = n_categories
+        self.top_categories_: List[Any] = []
+        self.feature_names_out_: List[str] = []
+
+    def fit(self, X, y=None):
+        if hasattr(X, "flatten"):
+            X = X.flatten()
+        elif isinstance(X, pd.DataFrame):
+            X = X.iloc[:, 0].values
+        elif isinstance(X, pd.Series):
+            X = X.values
+        counts = pd.Series(X).value_counts()
+        self.top_categories_ = counts.head(self.n_categories).index.tolist()
+        self.feature_names_out_ = [f"top_{c}" for c in self.top_categories_]
+        if len(counts) > self.n_categories:
+            self.feature_names_out_.append("other")
+        return self
+
+    def transform(self, X):
+        if hasattr(X, "flatten"):
+            X = X.flatten()
+        elif isinstance(X, pd.DataFrame):
+            X = X.iloc[:, 0].values
+        elif isinstance(X, pd.Series):
+            X = X.values
+        n_samples = len(X)
+        n_cols = len(self.feature_names_out_)
+        result = np.zeros((n_samples, n_cols), dtype=np.float32)
+
+        for j, cat in enumerate(self.top_categories_):
+            result[:, j] = (X == cat).astype(np.float32)
+
+        if n_cols > len(self.top_categories_):
+            known = np.zeros(n_samples, dtype=bool)
+            for cat in self.top_categories_:
+                known |= (X == cat)
+            result[:, -1] = (~known).astype(np.float32)
+
+        return result
+
+    def fit_transform(self, X, y=None):
+        self.fit(X, y)
+        return self.transform(X)
+
+    def get_feature_names_out(self, input_features=None):
+        return np.array(self.feature_names_out_)
+
+
 class DynamicVectorizer:
     """Transforms raw tabular data into fixed-size PyTorch tensors.
-    
+
     The vectorizer is fit on training data and then reused for validation, test,
     and inference. It ensures that all clients produce tensors compatible with
     the global model architecture.
-    
+
     Args:
         vector_size: Fixed output dimension (default: 128)
         scaler_type: 'standard' or 'robust' for numeric scaling
-        
+
     Example:
         mapper = MetadataMapper("configs/neobank_a_mapping.json")
         vectorizer = DynamicVectorizer(vector_size=128)
-        X_tensor, y = vectorizer.fit_transform(df, mapper)
-        # X_tensor.shape = (n_samples, 128)
+        result = vectorizer.fit_transform(df, mapper)
+        # result["data"].shape = (n_samples, 128)
+        # result["mask"].shape = (128,) — True where features exist
     """
-    
+
     def __init__(
         self,
         vector_size: int = 128,
@@ -65,62 +127,81 @@ class DynamicVectorizer:
         self._column_to_global_index: Dict[str, int] = {}
         self._pca: Optional[PCA] = None
         self._mapping_summary: Dict[str, Any] = {}
-    
+        self._active_mask: Optional[np.ndarray] = None
+        self._mapped_indices: List[int] = []
+        self._categorical_encoders: Dict[str, Any] = {}
+
     def _build_pipeline(self, mapper: MetadataMapper) -> ColumnTransformer:
-        """Build the sklearn preprocessing pipeline based on the mapper.
-        
-        Args:
-            mapper: MetadataMapper instance with feature definitions
-            
-        Returns:
-            Fitted ColumnTransformer pipeline
-        """
+        """Build the sklearn preprocessing pipeline based on the mapper."""
         numeric_cols = mapper.get_numeric_columns()
         categorical_cols = mapper.get_categorical_columns()
-        
+
         self._numeric_columns = numeric_cols
         self._categorical_columns = categorical_cols
         self._column_to_global_index = mapper.get_local_to_index()
-        
+        self._categorical_encoders = {}
+
+        allocations = mapper.get_categorical_allocation()
         transformers = []
-        
+
         if numeric_cols:
             numeric_transformer = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy='median')),
                 ('scaler', StandardScaler())
             ])
             transformers.append(('numeric', numeric_transformer, numeric_cols))
-        
-        if categorical_cols:
-            categorical_transformer = Pipeline(steps=[
+
+        for col_name in categorical_cols:
+            allocated = allocations.get(col_name, 1)
+            feature_mapping = next(
+                (f for f in mapper.feature_mappings if f.local_name == col_name),
+                None
+            )
+
+            if feature_mapping is not None and feature_mapping.max_cardinality is not None:
+                max_cats = min(feature_mapping.max_cardinality, allocated) - 1
+                if max_cats < 1:
+                    max_cats = 1
+                encoder = TopKEncoder(n_categories=max_cats)
+                self._categorical_encoders[col_name] = encoder
+                encoder_step = ('encoder', encoder)
+            else:
+                encoder = OneHotEncoder(handle_unknown='ignore', sparse_output=False)
+                self._categorical_encoders[col_name] = encoder
+                encoder_step = ('onehot', encoder)
+
+            col_transformer = Pipeline(steps=[
                 ('imputer', SimpleImputer(strategy='most_frequent')),
-                ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+                encoder_step
             ])
-            transformers.append(('categorical', categorical_transformer, categorical_cols))
-        
+            transformers.append((f'cat_{col_name}', col_transformer, [col_name]))
+
         if not transformers:
             raise ValueError("No features found in mapping. Check mapping.json")
-        
+
         pipeline = ColumnTransformer(
             transformers=transformers,
             remainder='drop'
         )
-        
+
         return pipeline
-    
+
     def fit_transform(
         self,
         df: pd.DataFrame,
         mapper: MetadataMapper
-    ) -> Tuple[torch.Tensor, np.ndarray]:
+    ) -> Dict[str, Any]:
         """Fit the vectorizer on training data and transform it.
-        
+
         Args:
             df: Training DataFrame with features and target
             mapper: MetadataMapper for this client
-            
+
         Returns:
-            (X_tensor, y_array) where X_tensor.shape = (n_samples, vector_size)
+            Dict with keys:
+                "data": torch.Tensor of shape (n_samples, vector_size)
+                "mask": torch.Tensor of shape (vector_size,) — True where features exist
+                "y": numpy array of labels
         """
         if not self._is_fitted:
             self._pipeline = self._build_pipeline(mapper)
@@ -128,153 +209,162 @@ class DynamicVectorizer:
             self._is_fitted = True
         else:
             X_processed = self._pipeline.transform(df)
-        
+
         self._feature_dim_before_vector = X_processed.shape[1]
-        
-        X_aligned = self._align_to_global_indices(X_processed, mapper)
+
+        X_aligned, mask = self._align_to_global_indices(X_processed, mapper)
         X_vector = self._enforce_vector_size(X_aligned)
-        
+
         y = df[mapper.get_target_column()].values.astype(np.float32)
         X_tensor = torch.tensor(X_vector, dtype=torch.float32)
-        
+
         self._mapping_summary = mapper.summary()
         self._mapping_summary['processed_dim'] = self._feature_dim_before_vector
         self._mapping_summary['output_dim'] = self.vector_size
-        
+
         logger.info(
             f"Vectorizer: {X_processed.shape} -> {X_tensor.shape} "
-            f"(y: {y.shape})"
+            f"(mask: {mask.sum()}/{len(mask)} active, y: {y.shape})"
         )
-        
-        return X_tensor, y
-    
+
+        return {
+            "data": X_tensor,
+            "mask": torch.tensor(mask, dtype=torch.bool),
+            "y": y,
+        }
+
     def transform(
         self,
         df: pd.DataFrame,
         mapper: Optional[MetadataMapper] = None
-    ) -> torch.Tensor:
+    ) -> Dict[str, Any]:
         """Transform unseen data using the fitted vectorizer.
-        
+
         Args:
             df: DataFrame to transform
             mapper: Optional mapper (uses the one from fit_transform if not provided)
-            
+
         Returns:
-            X_tensor of shape (n_samples, vector_size)
+            Dict with keys "data" and "mask"
         """
         if not self._is_fitted or self._pipeline is None:
             raise RuntimeError("Vectorizer must be fitted before transform. Call fit_transform() first.")
-        
-        if mapper is None:
-            X_processed = self._pipeline.transform(df)
-        else:
-            X_processed = self._pipeline.transform(df)
-        
-        X_aligned = self._align_to_global_indices(X_processed, mapper if mapper else None)
+
+        X_processed = self._pipeline.transform(df)
+        X_aligned, _ = self._align_to_global_indices(X_processed, mapper)
         X_vector = self._enforce_vector_size(X_aligned)
-        
-        return torch.tensor(X_vector, dtype=torch.float32)
-    
+
+        return {
+            "data": torch.tensor(X_vector, dtype=torch.float32),
+            "mask": torch.tensor(self._active_mask, dtype=torch.bool) if self._active_mask is not None else torch.ones(self.vector_size, dtype=torch.bool),
+        }
+
     def _align_to_global_indices(
         self,
         X_processed: np.ndarray,
         mapper: Optional[MetadataMapper]
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Align processed features to their global index positions.
-        
-        If the mapper defines global indices that don't match sequential 0,1,2...,
-        this method places each feature at its correct global index position,
-        leaving zeros for unmapped indices (gap logic).
-        
-        Args:
-            X_processed: Output from ColumnTransformer
-            mapper: MetadataMapper (can be None for sequential alignment)
-            
+
         Returns:
-            Aligned feature matrix
+            (aligned_matrix, boolean_mask)
         """
         if mapper is None:
-            return X_processed
-        
+            mask = np.ones(self.vector_size, dtype=bool)
+            return X_processed, mask
+
         feature_mapping = mapper.feature_mappings
         has_categorical = len(mapper.get_categorical_columns()) > 0
-        
+
         if not has_categorical:
             return self._align_numeric_only(X_processed, feature_mapping)
-        
+
         numeric_features = [f for f in feature_mapping if f.feature_type == FeatureType.NUMERIC]
         categorical_features = [f for f in feature_mapping if f.feature_type == FeatureType.CATEGORICAL]
-        
+
         n_samples = X_processed.shape[0]
         n_numerics = len(numeric_features)
-        n_cats_before_onehot = len(categorical_features)
-        
-        ohe = self._pipeline.named_transformers_.get('categorical')
-        if ohe is not None:
-            onehot = ohe.named_steps['onehot']
-            cat_feature_names = onehot.get_feature_names_out(categorical_features)
-        else:
-            cat_feature_names = []
-        
+
+        col_starts = {}
+        current_pos = 0
+        for name, _, cols in self._pipeline.transformers:
+            if name == 'numeric':
+                current_pos += 1
+                continue
+            if name.startswith('cat_'):
+                transformer = self._pipeline.named_transformers_.get(name)
+                if transformer is not None:
+                    encoder_step = transformer.named_steps.get('encoder') or transformer.named_steps.get('onehot')
+                    if encoder_step is not None:
+                        n_out = len(encoder_step.get_feature_names_out())
+                    else:
+                        n_out = 1
+                    col_starts[name] = (current_pos, n_out)
+                    current_pos += n_out
+
         result = np.zeros((n_samples, self.vector_size), dtype=np.float32)
-        
-        col_offset = 0
+        mask = np.zeros(self.vector_size, dtype=bool)
+        mapped_indices = []
+
         for i, f in enumerate(numeric_features):
-            result[:, f.global_index] = X_processed[:, i]
-            col_offset += 1
-        
-        for i, f in enumerate(categorical_features):
-            cat_start = n_numerics + i
-            start_name = f"{f.local_name}_"
-            cat_indices = [
-                j for j, name in enumerate(cat_feature_names)
-                if name.startswith(start_name)
-            ]
-            for j, cat_idx in enumerate(cat_indices):
+            if f.global_index < self.vector_size:
+                result[:, f.global_index] = X_processed[:, i]
+                mask[f.global_index] = True
+                mapped_indices.append(f.global_index)
+
+        for f in categorical_features:
+            encoder_name = f'cat_{f.local_name}'
+            if encoder_name not in col_starts:
+                continue
+            start_pos, n_out = col_starts[encoder_name]
+
+            for j in range(n_out):
                 global_pos = f.global_index + j
                 if global_pos < self.vector_size:
-                    result[:, global_pos] = X_processed[:, n_numerics + cat_idx]
-        
-        return result
-    
+                    result[:, global_pos] = X_processed[:, start_pos + j]
+                    mask[global_pos] = True
+                    if global_pos not in mapped_indices:
+                        mapped_indices.append(global_pos)
+
+        self._active_mask = mask
+        self._mapped_indices = sorted(mapped_indices)
+
+        return result, mask
+
     def _align_numeric_only(
         self,
         X_processed: np.ndarray,
         feature_mapping
-    ) -> np.ndarray:
+    ) -> Tuple[np.ndarray, np.ndarray]:
         """Align numeric-only features to global indices."""
         n_samples = X_processed.shape[0]
         result = np.zeros((n_samples, self.vector_size), dtype=np.float32)
-        
+        mask = np.zeros(self.vector_size, dtype=bool)
+        mapped_indices = []
+
         for i, f in enumerate(feature_mapping):
             if i < X_processed.shape[1] and f.global_index < self.vector_size:
                 result[:, f.global_index] = X_processed[:, i]
-        
-        return result
-    
+                mask[f.global_index] = True
+                mapped_indices.append(f.global_index)
+
+        self._active_mask = mask
+        self._mapped_indices = sorted(mapped_indices)
+
+        return result, mask
+
     def _enforce_vector_size(self, X: np.ndarray) -> np.ndarray:
-        """Ensure output is exactly vector_size dimensions.
-        
-        - If fewer: zero-pad
-        - If more: apply PCA reduction
-        - If exact: return as-is
-        
-        Args:
-            X: Input feature matrix
-            
-        Returns:
-            Feature matrix of shape (n_samples, vector_size)
-        """
+        """Ensure output is exactly vector_size dimensions."""
         n_samples = X.shape[0]
         current_dim = X.shape[1]
-        
+
         if current_dim == self.vector_size:
             return X
-        
+
         if current_dim < self.vector_size:
             padding = np.zeros((n_samples, self.vector_size - current_dim), dtype=np.float32)
             return np.hstack([X, padding])
-        
+
         if current_dim > self.vector_size:
             if self._pca is None:
                 self._pca = PCA(n_components=self.vector_size, random_state=42)
@@ -283,17 +373,13 @@ class DynamicVectorizer:
                 X_reduced = self._pca.transform(X)
             logger.info(f"PCA reduction: {current_dim} -> {self.vector_size} dimensions")
             return X_reduced
-        
+
         return X
-    
+
     def save(self, path: str):
-        """Save the fitted vectorizer to disk.
-        
-        Args:
-            path: File path for the pickle file
-        """
+        """Save the fitted vectorizer to disk."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        
+
         state = {
             'pipeline': self._pipeline,
             'is_fitted': self._is_fitted,
@@ -305,26 +391,22 @@ class DynamicVectorizer:
             'column_to_global_index': self._column_to_global_index,
             'pca': self._pca,
             'mapping_summary': self._mapping_summary,
+            'active_mask': self._active_mask,
+            'mapped_indices': self._mapped_indices,
+            'categorical_encoders': self._categorical_encoders,
         }
-        
+
         with open(path, 'wb') as f:
             pickle.dump(state, f)
-        
+
         logger.info(f"Vectorizer saved to {path}")
-    
+
     @classmethod
     def load(cls, path: str) -> "DynamicVectorizer":
-        """Load a fitted vectorizer from disk.
-        
-        Args:
-            path: File path of the pickle file
-            
-        Returns:
-            Fitted DynamicVectorizer instance
-        """
+        """Load a fitted vectorizer from disk."""
         with open(path, 'rb') as f:
             state = pickle.load(f)
-        
+
         vectorizer = cls(
             vector_size=state['vector_size'],
             scaler_type=state['scaler_type']
@@ -337,15 +419,20 @@ class DynamicVectorizer:
         vectorizer._column_to_global_index = state['column_to_global_index']
         vectorizer._pca = state['pca']
         vectorizer._mapping_summary = state['mapping_summary']
-        
+        vectorizer._active_mask = state.get('active_mask')
+        vectorizer._mapped_indices = state.get('mapped_indices', [])
+        vectorizer._categorical_encoders = state.get('categorical_encoders', {})
+
         logger.info(f"Vectorizer loaded from {path}")
-        
+
         return vectorizer
-    
+
     def get_feature_dim(self) -> int:
-        """Return the output vector dimension."""
         return self.vector_size
-    
+
     def get_mapping_summary(self) -> Dict[str, Any]:
-        """Return summary of the mapping used during fitting."""
         return self._mapping_summary
+
+    def get_active_mask(self) -> Optional[np.ndarray]:
+        """Return the boolean mask of active (non-padded) feature indices."""
+        return self._active_mask

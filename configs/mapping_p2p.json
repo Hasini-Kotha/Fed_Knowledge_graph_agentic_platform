@@ -1,0 +1,19 @@
+{
+  "client_id": "p2p_bank",
+  "domain": "fintech_p2p_transactions",
+  "vector_size": 128,
+  "target_column": "is_fraud",
+  "feature_mapping": [
+    {"global_index": 0, "local_name": "unix_time", "type": "numeric", "impute": "median", "description": "Unix timestamp"},
+    {"global_index": 1, "local_name": "amt", "type": "numeric", "impute": "median", "description": "Transaction amount"},
+    {"global_index": 2, "local_name": "city_pop", "type": "numeric", "impute": "median", "description": "City population"},
+    {"global_index": 3, "local_name": "lat", "type": "numeric", "impute": "median", "description": "Cardholder latitude"},
+    {"global_index": 4, "local_name": "long", "type": "numeric", "impute": "median", "description": "Cardholder longitude"},
+    {"global_index": 5, "local_name": "merch_lat", "type": "numeric", "impute": "median", "description": "Merchant latitude"},
+    {"global_index": 6, "local_name": "merch_long", "type": "numeric", "impute": "median", "description": "Merchant longitude"},
+    {"global_index": 7, "local_name": "category", "type": "categorical", "impute": "mode", "description": "Merchant category (14 values, occupies 7-20)"},
+    {"global_index": 21, "local_name": "gender", "type": "categorical", "impute": "mode", "description": "Cardholder gender (2 values, occupies 21-22)"},
+    {"global_index": 23, "local_name": "state", "type": "categorical", "impute": "mode", "description": "State (50 values, occupies 23-72)"},
+    {"global_index": 73, "local_name": "job", "type": "categorical", "impute": "mode", "description": "Occupation (Top-54 + other bucket, occupies 73-127)", "max_cardinality": 55}
+  ]
+}

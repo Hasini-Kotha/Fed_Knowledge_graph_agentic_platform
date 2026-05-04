@@ -1,0 +1,12 @@
+{
+  "experiment": "p2p_iid_no_dp",
+  "dp_enabled": false,
+  "best_round": 5,
+  "best_roc_auc": 0.9259,
+  "best_pr_auc": 0.8123,
+  "best_f1": 0.4714,
+  "final_roc_auc": 0.9043,
+  "final_pr_auc": 0.748,
+  "final_f1": 0.0443,
+  "elapsed_s": 40.5
+}

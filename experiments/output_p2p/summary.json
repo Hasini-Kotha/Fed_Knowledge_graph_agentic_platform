@@ -1,0 +1,44 @@
+{
+  "experiments": [
+    {
+      "experiment": "p2p_iid_no_dp",
+      "dp_enabled": false,
+      "best_round": 5,
+      "best_roc_auc": 0.9259,
+      "best_pr_auc": 0.8123,
+      "best_f1": 0.4714,
+      "final_roc_auc": 0.9043,
+      "final_pr_auc": 0.748,
+      "final_f1": 0.0443,
+      "elapsed_s": 40.5
+    },
+    {
+      "experiment": "p2p_iid_dp_sigma1",
+      "dp_enabled": true,
+      "best_round": 4,
+      "best_roc_auc": 0.6886,
+      "best_pr_auc": 0.314,
+      "best_f1": 0.4365,
+      "final_roc_auc": 0.5554,
+      "final_pr_auc": 0.221,
+      "final_f1": 0.3041,
+      "elapsed_s": 37.3,
+      "final_dp_epsilon": 20.1745,
+      "final_dp_delta": 1e-05
+    },
+    {
+      "experiment": "p2p_noniid_amt_dp1",
+      "dp_enabled": true,
+      "best_round": 5,
+      "best_roc_auc": 0.5605,
+      "best_pr_auc": 0.2602,
+      "best_f1": 0.2973,
+      "final_roc_auc": 0.478,
+      "final_pr_auc": 0.2267,
+      "final_f1": 0.1071,
+      "elapsed_s": 36.3,
+      "final_dp_epsilon": 20.1745,
+      "final_dp_delta": 1e-05
+    }
+  ]
+}

@@ -246,9 +246,71 @@ def create_sim_fraud_schema() -> SchemaContract:
     return schema
 
 
+def create_p2p_fraud_schema() -> SchemaContract:
+    """Create schema contract for P2P transaction fraud dataset."""
+    schema = SchemaContract(
+        name="p2p_fraud",
+        version="1.0.0",
+        label_column="is_fraud",
+        label_positive=1,
+        label_negative=0,
+        required_columns=["is_fraud", "amt"],
+        numeric_columns=["unix_time", "amt", "city_pop", "lat", "long", "merch_lat", "merch_long"],
+        categorical_columns=["category", "gender", "state", "job"],
+        identifier_columns=["cc_num", "trans_num"],
+        timestamp_columns=["trans_date_trans_time", "dob"],
+        metadata={
+            "description": "P2P Transaction Fraud Detection Dataset",
+            "source": "Simulated P2P transactions",
+            "domain": "fraud_detection",
+            "task": "binary_classification",
+        },
+    )
+    return schema
+
+
+def create_schema_from_mapping(mapping_path: str) -> SchemaContract:
+    """Create a schema contract from a mapping.json file.
+    
+    This enables fully domain-agnostic pipeline execution — the schema
+    is derived entirely from the mapping configuration.
+    """
+    import json
+    with open(mapping_path, 'r') as f:
+        mapping_config = json.load(f)
+    
+    target_column = mapping_config.get("target_column", "Class")
+    numeric_cols = []
+    categorical_cols = []
+    
+    for feature in mapping_config.get("feature_mapping", []):
+        if feature.get("type") == "numeric":
+            numeric_cols.append(feature["local_name"])
+        elif feature.get("type") == "categorical":
+            categorical_cols.append(feature["local_name"])
+    
+    schema = SchemaContract(
+        name=mapping_config.get("client_id", "unknown"),
+        version="1.0.0",
+        label_column=target_column,
+        label_positive=1,
+        label_negative=0,
+        required_columns=[target_column] + (numeric_cols[:1] if numeric_cols else []),
+        numeric_columns=numeric_cols,
+        categorical_columns=categorical_cols,
+        metadata={
+            "description": f"Schema derived from {mapping_path}",
+            "domain": mapping_config.get("domain", "unknown"),
+            "task": "binary_classification",
+        },
+    )
+    return schema
+
+
 DEFAULT_SCHEMAS = {
     "kaggle_mlg_ulb_fraud": create_fraud_schema,
     "simulated_bank_fraud": create_sim_fraud_schema,
+    "p2p_fraud": create_p2p_fraud_schema,
 }
 
 

@@ -1,149 +1,227 @@
-"""Manual FL Loop — Ray-free fallback for Windows."""
+"""Manual FL Loop — Ray-free fallback for Windows.
+
+Synchronous FedAvg/FedProx loop that runs without Ray backend.
+For each round:
+  1. Train each client locally with current global weights
+  2. Aggregate weights (weighted by client sample size)
+  3. Evaluate all clients on the new global model
+  4. Aggregate metrics and save checkpoint
+"""
 
 import logging
+import hashlib
+import json
 import numpy as np
 import torch
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
-
-import flwr as fl
 
 logger = logging.getLogger(__name__)
 
 
 def run_manual_simulation(
-    client_fn: Callable,
     client_ids: List[str],
-    num_rounds: int,
-    strategy,
-    data_dir: str = "data/splits",
-    mapping_path: str = "configs/mapping.json",
-    model_config: Dict[str, Any] = None,
-    train_config: Dict[str, Any] = None,
-    privacy_config: Dict[str, Any] = None
+    data_dir: str,
+    mapping_path: str,
+    vectorizer_path: str,
+    model_config: Dict[str, Any],
+    train_config: Dict[str, Any],
+    fl_config: Dict[str, Any],
+    privacy_config: Dict[str, Any],
+    artifacts_dir: str = "artifacts/global_model",
+    strategy_type: str = "fedprox",
 ):
-    """Run a synchronous FedAvg/FedProx loop without Ray.
-    
-    For each round:
-    1. Train each client locally with current global weights
-    2. Aggregate weights
-    3. Evaluate all clients
-    4. Aggregate metrics
-    
+    """Run a synchronous FL simulation loop without Ray.
+
     Args:
-        client_fn: Factory function to create clients
         client_ids: List of client identifiers
-        num_rounds: Number of FL rounds
-        strategy: FL strategy (FedProx, FedAvg, etc.)
+        data_dir: Directory containing client CSV files
+        mapping_path: Path to mapping.json
+        vectorizer_path: Path to fitted vectorizer pickle
+        model_config: Model configuration
+        train_config: Training configuration
+        fl_config: FL configuration (num_rounds, strategy, mu, beta, etc.)
+        privacy_config: Differential privacy configuration
+        artifacts_dir: Directory to save checkpoints
+        strategy_type: 'fedprox', 'fedavg', or 'trimmed_mean'
     """
-    logger.info(f"Manual FL loop: {num_rounds} rounds, {len(client_ids)} clients")
-    
+    import pandas as pd
     from src.core.metadata_engine import MetadataMapper
     from src.core.vectorizer import DynamicVectorizer
-    from src.models import create_model
+    from src.models.tab_transformer import create_model
     from src.models.train_engine import train_one_round, evaluate_client
-    
+    from src.fl.secure_update import protect_update
+    from src.fl.dp_accountant import RDPAccountant
+
+    logger.info("Manual FL simulation: %d rounds, strategy=%s, %d clients",
+               fl_config.get('num_rounds', 10), strategy_type, len(client_ids))
+
+    Path(artifacts_dir).mkdir(parents=True, exist_ok=True)
+
     mapper = MetadataMapper(mapping_path)
-    
-    vectorizer_path = Path("artifacts/global_vectorizer.pkl")
-    if not vectorizer_path.exists():
-        raise FileNotFoundError(f"Vectorizer not found: {vectorizer_path}. Run data pipeline first.")
-    
-    vectorizer = DynamicVectorizer.load(str(vectorizer_path))
-    
-    import pandas as pd
-    import numpy as np
-    
+    vectorizer = DynamicVectorizer.load(vectorizer_path)
+
     client_data = {}
-    for client_id in client_ids:
-        train_df = pd.read_csv(f"{data_dir}/{client_id}_train.csv")
-        val_df = pd.read_csv(f"{data_dir}/{client_id}_val.csv")
-        
-        X_train, y_train = vectorizer.fit_transform(train_df, mapper) if client_id == client_ids[0] else vectorizer.transform(train_df, mapper)
-        X_val = vectorizer.transform(val_df, mapper)
+    for cid in client_ids:
+        train_df = pd.read_csv(f"{data_dir}/{cid}_train.csv")
+        val_df = pd.read_csv(f"{data_dir}/{cid}_val.csv")
+
+        train_result = vectorizer.fit_transform(train_df, mapper) if cid == client_ids[0] else vectorizer.transform(train_df, mapper)
+        val_result = vectorizer.transform(val_df, mapper)
+
+        if isinstance(train_result, dict):
+            X_train = train_result["data"]
+            padding_mask = train_result.get("mask", torch.ones(vectorizer.vector_size, dtype=torch.bool))
+            y_train = torch.tensor(train_df[mapper.get_target_column()].values.astype(np.float32))
+        else:
+            X_train = train_result
+            y_train = torch.tensor(train_df[mapper.get_target_column()].values.astype(np.float32))
+            padding_mask = torch.ones(vectorizer.vector_size, dtype=torch.bool)
+
+        if isinstance(val_result, dict):
+            X_val = val_result["data"]
+        else:
+            X_val = val_result
+
         y_val = torch.tensor(val_df[mapper.get_target_column()].values.astype(np.float32))
-        
-        client_data[client_id] = {
+
+        client_data[cid] = {
             'X_train': X_train, 'y_train': y_train,
-            'X_val': X_val, 'y_val': y_val
+            'X_val': X_val, 'y_val': y_val,
+            'padding_mask': padding_mask,
+            'n_train': len(X_train),
         }
-    
-    model_type = model_config.get("model_type", "mlp") if model_config else "mlp"
+        logger.info("%s: train=%s, val=%s, active_features=%d/%d",
+                   cid, X_train.shape, X_val.shape,
+                   padding_mask.sum().item(), vectorizer.vector_size)
+
+    model_type = model_config.get("model_type", "mlp")
     input_dim = vectorizer.get_feature_dim()
-    
-    global_model = create_model(input_dim, model_config or {}, model_type)
-    global_params = [p.clone().detach() for p in global_model.parameters()]
-    
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    global_model = global_model.to(device)
-    
+
+    global_model = create_model(input_dim, model_config, model_type)
+    global_params = [p.clone().detach() for p in global_model.parameters()]
+
+    mu = fl_config.get("fedprox_mu", 0.01) if strategy_type == "fedprox" else 0.0
+    beta = fl_config.get("beta", 0.1) if strategy_type == "trimmed_mean" else 0.0
+
     metrics_history = []
-    
-    for round_num in range(1, num_rounds + 1):
-        logger.info(f"--- Round {round_num}/{num_rounds} ---")
-        
+    round_num = 0
+
+    dp_enabled = privacy_config.get("enabled", False)
+    noise_mult = privacy_config.get("noise_multiplier", 0.0)
+    total_clients = len(client_ids)
+    sample_rate = 1.0 if total_clients <= 3 else min(3, total_clients) / total_clients
+
+    accountant = RDPAccountant(
+        noise_multiplier=noise_mult if dp_enabled else 0.0,
+        sample_rate=sample_rate,
+        delta=privacy_config.get("delta", 1e-5),
+    )
+
+    for round_num in range(1, fl_config.get("num_rounds", 10) + 1):
+        logger.info("--- Round %d/%d ---", round_num, fl_config.get('num_rounds', 10))
+
         fit_results = []
-        for client_id in client_ids:
-            local_model = create_model(input_dim, model_config or {}, model_type).to(device)
+        for cid in client_ids:
+            local_model = create_model(input_dim, model_config, model_type).to(device)
             local_model.set_parameters(global_params)
-            
-            train_cfg = {
-                "epochs": train_config.get("epochs", 3) if train_config else 3,
-                "lr": train_config.get("lr", 0.001) if train_config else 0.001,
-                "batch_size": train_config.get("batch_size", 256) if train_config else 256,
-                "mu": train_config.get("mu", 0.01) if train_config else 0.01,
+
+            tc = {
+                "epochs": train_config.get("epochs", 3),
+                "batch_size": train_config.get("batch_size", 256),
+                "lr": train_config.get("lr", 0.001),
+                "mu": mu,
                 "round": round_num,
+                "optimizer": "adamw",
             }
-            
+
             updated_params, metrics = train_one_round(
                 local_model,
-                client_data[client_id]['X_train'],
-                client_data[client_id]['y_train'],
-                train_cfg,
-                device
+                client_data[cid]['X_train'],
+                client_data[cid]['y_train'],
+                tc,
+                device,
+                padding_mask=client_data[cid]['padding_mask'],
+                X_val=client_data[cid]['X_val'],
+                y_val=client_data[cid]['y_val'],
             )
-            
-            fit_results.append((client_id, updated_params, len(client_data[client_id]['X_train']), metrics))
-        
-        aggregated_params = _aggregate_weights(fit_results, strategy)
-        global_params = aggregated_params
+
+            if dp_enabled:
+                ref_params = [p.cpu().numpy() for p in global_params]
+                updated_np = [p.cpu().numpy() for p in updated_params]
+                protected, audit = protect_update(updated_np, ref_params, privacy_config)
+                updated_params = [torch.tensor(p) for p in protected]
+                metrics["audit"] = audit
+
+            fit_results.append((cid, updated_params, client_data[cid]['n_train'], metrics))
+            logger.info("  %s: train_loss=%.4f", cid, metrics.get('train_loss', 0))
+
+        if strategy_type == "trimmed_mean" and len(fit_results) >= 3:
+            aggregated = _trimmed_mean_aggregate(fit_results, beta=beta)
+        else:
+            aggregated = _weighted_aggregate(fit_results)
+
+        global_params = aggregated
         global_model.set_parameters(global_params)
-        
+
+        if dp_enabled:
+            accountant.step()
+
         eval_results = []
-        for client_id in client_ids:
-            eval_model = create_model(input_dim, model_config or {}, model_type).to(device)
+        for cid in client_ids:
+            eval_model = create_model(input_dim, model_config, model_type).to(device)
             eval_model.set_parameters(global_params)
-            
-            eval_cfg = {"batch_size": 512}
-            eval_metrics = evaluate_client(
+
+            ec = {"batch_size": 512}
+            em = evaluate_client(
                 eval_model,
-                client_data[client_id]['X_val'],
-                client_data[client_id]['y_val'],
-                eval_cfg,
-                device
+                client_data[cid]['X_val'],
+                client_data[cid]['y_val'],
+                ec,
+                device,
+                padding_mask=client_data[cid]['padding_mask']
             )
-            eval_results.append((client_id, eval_metrics, len(client_data[client_id]['X_val'])))
-        
+            eval_results.append((cid, em, client_data[cid]['n_train']))
+
         round_metrics = _aggregate_metrics(eval_results, round_num)
+        round_metrics["strategy"] = strategy_type
+        if mu > 0:
+            round_metrics["mu"] = mu
+        if beta > 0:
+            round_metrics["beta"] = beta
+
+        if dp_enabled:
+            dp_budget = accountant.get_privacy_budget()
+            round_metrics["dp_epsilon"] = dp_budget.epsilon
+            round_metrics["dp_delta"] = dp_budget.delta
+            round_metrics["dp_noise_multiplier"] = dp_budget.noise_multiplier
+
+        _save_checkpoint(round_num, global_params, round_metrics, artifacts_dir)
         metrics_history.append(round_metrics)
-        
-        _save_checkpoint(round_num, global_params, round_metrics, "artifacts/global_model")
-        
-        logger.info(f"Round {round_metrics['round']}: "
-                  f"loss={round_metrics.get('loss', 'N/A'):.4f}, "
-                  f"roc_auc={round_metrics.get('roc_auc', 'N/A'):.4f}, "
-                  f"pr_auc={round_metrics.get('pr_auc', 'N/A'):.4f}")
-    
-    _save_metrics_history(metrics_history, "artifacts/global_model")
-    
-    logger.info(f"FL simulation complete: {num_rounds} rounds")
+
+        dp_info = ""
+        if dp_enabled:
+            dp_info = f", eps={accountant.get_epsilon():.4f}"
+        logger.info("  Global: roc_auc=%.4f, pr_auc=%.4f, f1=%.4f%s",
+                   round_metrics['roc_auc'], round_metrics['pr_auc'],
+                   round_metrics['f1'], dp_info)
+
+    if dp_enabled:
+        dp_report = accountant.report()
+        logger.info(dp_report)
+        _save_dp_report(accountant, artifacts_dir)
+
+    _save_metrics_history(metrics_history, artifacts_dir)
+    logger.info("FL simulation complete: %d rounds", round_num)
+
     return metrics_history
 
 
-def _aggregate_weights(fit_results, strategy):
-    """Weighted average of client parameters."""
+def _weighted_aggregate(fit_results):
+    """Weighted average of client parameters (FedAvg/FedProx)."""
     total_samples = sum(r[2] for r in fit_results)
-    
+
     aggregated = None
     for _, params, n_samples, _ in fit_results:
         weight = n_samples / total_samples
@@ -151,51 +229,98 @@ def _aggregate_weights(fit_results, strategy):
             aggregated = [p * weight for p in params]
         else:
             aggregated = [a + p * weight for a, p in zip(aggregated, params)]
-    
+
     return aggregated
+
+
+def _trimmed_mean_aggregate(fit_results, beta=0.1):
+    """Trimmed Mean aggregation for Byzantine fault tolerance."""
+    n_clients = len(fit_results)
+    n_trim = max(1, int(n_clients * beta))
+
+    all_weights = []
+    for _, params, _, _ in fit_results:
+        all_weights.append([p.cpu().numpy() for p in params])
+
+    trimmed_weights = []
+    for layer_idx in range(len(all_weights[0])):
+        layer_weights = np.stack([w[layer_idx] for w in all_weights])
+        sorted_weights = np.sort(layer_weights, axis=0)
+
+        if n_trim > 0:
+            trimmed = sorted_weights[n_trim:n_clients-n_trim]
+        else:
+            trimmed = sorted_weights
+
+        trimmed_mean = np.mean(trimmed, axis=0)
+        trimmed_weights.append(torch.tensor(trimmed_mean))
+
+    return trimmed_weights
 
 
 def _aggregate_metrics(eval_results, round_num):
     """Weighted average of client evaluation metrics."""
     total_samples = sum(r[2] for r in eval_results)
-    
+
     metrics = {"round": round_num}
-    metric_keys = ["loss", "roc_auc", "pr_auc", "f1", "precision", "recall", "accuracy"]
-    
+    metric_keys = ["roc_auc", "pr_auc", "f1", "precision", "recall", "accuracy"]
+
     for key in metric_keys:
-        weighted_sum = 0.0
-        for _, client_metrics, n_samples in eval_results:
-            if key in client_metrics:
-                weighted_sum += client_metrics[key] * n_samples
+        weighted_sum = sum(r[1].get(key, 0) * r[2] for r in eval_results)
         metrics[key] = weighted_sum / total_samples
-    
+
     return metrics
 
 
 def _save_checkpoint(round_num, params, metrics, artifacts_dir):
-    """Save round checkpoint."""
-    import torch
-    from pathlib import Path
-    
-    Path(artifacts_dir).mkdir(parents=True, exist_ok=True)
+    """Save round checkpoint with SHA-256 checksum."""
     checkpoint_path = Path(artifacts_dir) / f"round_{round_num:03d}_checkpoint.pt"
-    
+
+    weights = [p.clone().detach() for p in params]
+
+    checksum = hashlib.sha256()
+    for p in weights:
+        checksum.update(p.cpu().numpy().tobytes())
+
     checkpoint = {
         "round": round_num,
-        "weights": params,
+        "weights": weights,
         "metrics": metrics,
+        "checksum": checksum.hexdigest(),
     }
-    
+
     torch.save(checkpoint, str(checkpoint_path))
 
 
 def _save_metrics_history(history, artifacts_dir):
     """Save metrics history."""
-    import json
-    from pathlib import Path
-    
-    Path(artifacts_dir).mkdir(parents=True, exist_ok=True)
     history_path = Path(artifacts_dir) / "training_history.json"
-    
+
+    serializable = []
+    for h in history:
+        serializable.append({k: float(v) if isinstance(v, (float, np.floating)) else v for k, v in h.items()})
+
     with open(history_path, 'w') as f:
-        json.dump(history, f, indent=2, default=str)
+        json.dump(serializable, f, indent=2)
+
+
+def _save_dp_report(accountant, artifacts_dir):
+    """Save differential privacy budget report."""
+    from src.fl.dp_accountant import RDPAccountant
+    report_path = Path(artifacts_dir) / "dp_budget_report.json"
+
+    budget = accountant.get_privacy_budget()
+    report = {
+        "mechanism": "gaussian_subsampled",
+        "noise_multiplier": budget.noise_multiplier,
+        "sample_rate": budget.sample_rate,
+        "total_rounds": budget.rounds,
+        "delta": budget.delta,
+        "epsilon": budget.epsilon,
+        "history": accountant.get_history(),
+    }
+
+    with open(report_path, 'w') as f:
+        json.dump(report, f, indent=2)
+
+    logger.info("DP budget report saved to %s", report_path)

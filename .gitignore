@@ -4,6 +4,14 @@
 # Client split outputs (regenerated from source)
 data/splits/*.csv
 data/splits/*.json
+data/splits_p2p/*.csv
+data/splits_p2p/*.json
+data/splits_p2p_exp_iid/*.csv
+data/splits_p2p_exp_iid/*.json
+data/splits_p2p_exp_noniid/*.csv
+data/splits_p2p_exp_noniid/*.json
+data/splits_p2p_sampled_iid/*.csv
+data/splits_p2p_sampled_iid/*.json
 
 # Raw source datasets (available separately)
 Sample_datasets/

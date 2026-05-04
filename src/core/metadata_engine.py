@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 
 import pandas as pd
 
-from src.core.contract import FeatureType, ImputationStrategy
+from src.core.contract import FeatureType, ImputationStrategy, HighCardinalityStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +32,22 @@ class FeatureMapping:
     imputation: ImputationStrategy
     description: str = ""
     default_value: float = 0.0
+    max_cardinality: Optional[int] = None
+    high_cardinality_strategy: HighCardinalityStrategy = HighCardinalityStrategy.TOP_K
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "global_index": self.global_index,
             "local_name": self.local_name,
             "type": self.feature_type.value,
             "impute": self.imputation.value,
             "description": self.description,
         }
+        if self.max_cardinality is not None:
+            result["max_cardinality"] = self.max_cardinality
+        if self.high_cardinality_strategy != HighCardinalityStrategy.TOP_K:
+            result["high_cardinality_strategy"] = self.high_cardinality_strategy.value
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FeatureMapping":
@@ -51,6 +58,10 @@ class FeatureMapping:
             imputation=ImputationStrategy(data.get("impute", "median")),
             description=data.get("description", ""),
             default_value=data.get("default_value", 0.0),
+            max_cardinality=data.get("max_cardinality"),
+            high_cardinality_strategy=HighCardinalityStrategy(
+                data.get("high_cardinality_strategy", "top_k")
+            ),
         )
 
 
@@ -216,6 +227,70 @@ class MetadataMapper:
             "categorical_features": len(self._categorical_features),
             "missing_indices": len(self.get_missing_indices()),
         }
+
+    def get_categorical_allocation(self) -> Dict[str, int]:
+        """Return the number of positions allocated to each categorical feature.
+
+        A categorical feature at global_index N occupies positions N through
+        N + cardinality - 1, unless limited by vector_size or max_cardinality.
+
+        Returns:
+            Dict mapping feature name to allocated positions count.
+        """
+        allocations = {}
+        for i, f in enumerate(self._categorical_features):
+            next_start = (
+                self._categorical_features[i + 1].global_index
+                if i + 1 < len(self._categorical_features)
+                else self.vector_size
+            )
+            allocated = next_start - f.global_index
+            if f.max_cardinality is not None:
+                allocated = min(allocated, f.max_cardinality)
+            allocations[f.local_name] = max(allocated, 1)
+        return allocations
+
+    def detect_high_cardinality_risk(
+        self,
+        df: pd.DataFrame,
+        threshold_ratio: float = 0.8
+    ) -> Dict[str, Dict[str, Any]]:
+        """Identify categorical features at risk of exceeding allocated space.
+
+        Args:
+            df: DataFrame to check cardinality against.
+            threshold_ratio: Warn if actual cardinality >= threshold_ratio * allocated.
+
+        Returns:
+            Dict of feature_name -> {actual, allocated, ratio, strategy}.
+        """
+        allocations = self.get_categorical_allocation()
+        risks = {}
+
+        for f in self._categorical_features:
+            if f.local_name not in df.columns:
+                continue
+            actual = df[f.local_name].nunique()
+            allocated = allocations[f.local_name]
+            ratio = actual / allocated if allocated > 0 else float("inf")
+
+            if actual > allocated:
+                risks[f.local_name] = {
+                    "actual_cardinality": actual,
+                    "allocated_positions": allocated,
+                    "overflow": actual - allocated,
+                    "strategy": f.high_cardinality_strategy.value,
+                }
+            elif ratio >= threshold_ratio:
+                risks[f.local_name] = {
+                    "actual_cardinality": actual,
+                    "allocated_positions": allocated,
+                    "headroom": allocated - actual,
+                    "strategy": f.high_cardinality_strategy.value,
+                    "warning": "Approaching capacity limit",
+                }
+
+        return risks
 
 
 def create_default_mapping(

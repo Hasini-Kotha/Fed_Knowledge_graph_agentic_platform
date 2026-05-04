@@ -1,0 +1,14 @@
+{
+  "experiment": "p2p_noniid_amt_dp1",
+  "dp_enabled": true,
+  "best_round": 5,
+  "best_roc_auc": 0.5605,
+  "best_pr_auc": 0.2602,
+  "best_f1": 0.2973,
+  "final_roc_auc": 0.478,
+  "final_pr_auc": 0.2267,
+  "final_f1": 0.1071,
+  "elapsed_s": 36.3,
+  "final_dp_epsilon": 20.1745,
+  "final_dp_delta": 1e-05
+}

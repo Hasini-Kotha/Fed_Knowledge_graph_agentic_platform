@@ -60,7 +60,15 @@ def evaluate_global_model(
     vectorizer = DynamicVectorizer.load(vectorizer_path)
     
     test_df = pd.read_csv(global_test_csv)
-    X_test = vectorizer.transform(test_df, mapper)
+    test_result = vectorizer.transform(test_df, mapper)
+    
+    if isinstance(test_result, dict):
+        X_test = test_result["data"]
+        padding_mask = test_result.get("mask")
+    else:
+        X_test = test_result
+        padding_mask = None
+    
     y_test = test_df[mapper.get_target_column()].values.astype(np.float32)
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -75,9 +83,9 @@ def evaluate_global_model(
             model.set_parameters(weights)
     
     eval_config = {"batch_size": model_config.get("eval_batch_size", 512)}
-    metrics = evaluate_model(model, X_test, y_test, device, eval_config["batch_size"])
+    metrics = evaluate_model(model, X_test, y_test, device, eval_config["batch_size"], padding_mask=padding_mask)
     
-    probs = predict_proba(model, X_test, device, eval_config["batch_size"])
+    probs = predict_proba(model, X_test, device, eval_config["batch_size"], padding_mask=padding_mask)
     optimal_threshold = compute_optimal_threshold(y_test, probs, metric="f1")
     metrics["optimal_threshold"] = optimal_threshold
     
@@ -114,9 +122,15 @@ def generate_evaluation_report(
         f.write(f"Best Round: {round_number}\n\n")
         f.write("FL Validation Metrics:\n")
         for k, v in round_metrics.items():
-            f.write(f"  {k}: {v:.4f}\n")
+            if isinstance(v, (int, float)):
+                f.write(f"  {k}: {v:.4f}\n")
+            else:
+                f.write(f"  {k}: {v}\n")
         f.write("\nGlobal Holdout Metrics:\n")
         for k, v in global_metrics.items():
-            f.write(f"  {k}: {v:.4f}\n")
+            if isinstance(v, (int, float)):
+                f.write(f"  {k}: {v:.4f}\n")
+            else:
+                f.write(f"  {k}: {v}\n")
     
     logger.info(f"Reports saved to {output_path}")

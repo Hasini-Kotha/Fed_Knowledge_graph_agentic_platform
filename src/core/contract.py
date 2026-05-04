@@ -33,6 +33,13 @@ class AggregationStrategy(str, Enum):
     TRIMMED_MEAN = "trimmed_mean"
 
 
+class HighCardinalityStrategy(str, Enum):
+    """Strategies for handling categorical features exceeding allocated space."""
+    TOP_K = "top_k"
+    FREQUENCY_BUCKET = "frequency_bucket"
+    HASH_EMBEDDING = "hash_embedding"
+
+
 @dataclass
 class VectorContract:
     """Defines the fixed-size input tensor contract for the global model.

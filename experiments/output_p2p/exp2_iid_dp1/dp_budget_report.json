@@ -1,0 +1,80 @@
+{
+  "mechanism": "gaussian_subsampled",
+  "noise_multiplier": 1.0,
+  "sample_rate": 1.0,
+  "total_rounds": 10,
+  "delta": 1e-05,
+  "epsilon": 20.174530114073058,
+  "history": [
+    {
+      "step": 1,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 5.298566005594164,
+      "delta": 1e-05
+    },
+    {
+      "step": 2,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 7.786397988357242,
+      "delta": 1e-05
+    },
+    {
+      "step": 3,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 9.811485693003231,
+      "delta": 1e-05
+    },
+    {
+      "step": 4,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 11.597855079361699,
+      "delta": 1e-05
+    },
+    {
+      "step": 5,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 13.22999498440854,
+      "delta": 1e-05
+    },
+    {
+      "step": 6,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 14.754148069493958,
+      "delta": 1e-05
+    },
+    {
+      "step": 7,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 16.197242244893612,
+      "delta": 1e-05
+    },
+    {
+      "step": 8,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 17.57602247664155,
+      "delta": 1e-05
+    },
+    {
+      "step": 9,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 18.89841441910739,
+      "delta": 1e-05
+    },
+    {
+      "step": 10,
+      "sigma": 1.0,
+      "q": 1.0,
+      "epsilon": 20.174530114073058,
+      "delta": 1e-05
+    }
+  ]
+}
