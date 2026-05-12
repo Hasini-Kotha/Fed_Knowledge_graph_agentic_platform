@@ -90,8 +90,14 @@ def main():
         scaler_type=scaler_type,
     )
     logger.info("Mapping loaded: %s", preprocessor.get_mapping_summary())
-    X_train, y_train = preprocessor.fit_transform(train_df)
-    X_val, y_val = preprocessor.transform(val_df)
+    X_train_np, y_train_np = preprocessor.fit_transform(train_df)
+    X_val_np, y_val_np = preprocessor.transform(val_df)
+    
+    # Convert to torch tensors — train_engine expects tensors
+    X_train = torch.tensor(X_train_np, dtype=torch.float32)
+    y_train = torch.tensor(y_train_np, dtype=torch.float32)
+    X_val = torch.tensor(X_val_np, dtype=torch.float32)
+    y_val = torch.tensor(y_val_np, dtype=torch.float32)
     
     import torch
     if not isinstance(X_train, torch.Tensor):
