@@ -34,8 +34,8 @@ import torch
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from src.data.preprocess import ClientPreprocessor
-from src.models.mlp import create_model
-from src.models.train_local import train_one_round, evaluate_client, save_local_checkpoint
+from src.models.tab_transformer import create_model
+from src.models.train_engine import train_one_round, evaluate_client, save_local_checkpoint
 from src.evaluation.metrics import print_metrics_report, compute_optimal_threshold
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -93,6 +93,13 @@ def main():
     X_train, y_train = preprocessor.fit_transform(train_df)
     X_val, y_val = preprocessor.transform(val_df)
     
+    import torch
+    if not isinstance(X_train, torch.Tensor):
+        X_train = torch.tensor(X_train, dtype=torch.float32)
+        y_train = torch.tensor(y_train, dtype=torch.float32)
+        X_val = torch.tensor(X_val, dtype=torch.float32)
+        y_val = torch.tensor(y_val, dtype=torch.float32)
+    
     preprocessor_path = artifacts_dir / "preprocessors" / f"{client}_preprocessor.pkl"
     preprocessor.save(preprocessor_path)
     
@@ -112,9 +119,8 @@ def main():
     
     # Step 6 - Find Optimal Threshold
     # Re-run inference to get probabilities
-    import torch
     from torch.utils.data import DataLoader
-    from src.models.train_local import ClientDataset
+    from src.models.train_engine import ClientDataset
     
     dataset = ClientDataset(X_val, y_val)
     dataloader = DataLoader(dataset, batch_size=eval_config.get("batch_size", 512), shuffle=False)
@@ -139,7 +145,7 @@ def main():
     save_local_checkpoint(model, preprocessor, eval_metrics, checkpoint_path)
     
     # Step 8 - Print Summary
-    positive_ratio = np.mean(y_train) * 100
+    positive_ratio = (y_train.float().mean().item()) * 100
     summary = f"""
     Summary for {client}:
     - Feature dim: {input_dim}

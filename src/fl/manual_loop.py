@@ -46,8 +46,7 @@ def run_manual_simulation(
         strategy_type: 'fedprox', 'fedavg', or 'trimmed_mean'
     """
     import pandas as pd
-    from src.core.metadata_engine import MetadataMapper
-    from src.core.vectorizer import DynamicVectorizer
+    from src.data.preprocess import ClientPreprocessor
     from src.models.tab_transformer import create_model
     from src.models.train_engine import train_one_round, evaluate_client
     from src.fl.secure_update import protect_update
@@ -58,32 +57,30 @@ def run_manual_simulation(
 
     Path(artifacts_dir).mkdir(parents=True, exist_ok=True)
 
-    mapper = MetadataMapper(mapping_path)
-    vectorizer = DynamicVectorizer.load(vectorizer_path)
-
     client_data = {}
     for cid in client_ids:
         train_df = pd.read_csv(f"{data_dir}/{cid}_train.csv")
         val_df = pd.read_csv(f"{data_dir}/{cid}_val.csv")
 
-        train_result = vectorizer.fit_transform(train_df, mapper) if cid == client_ids[0] else vectorizer.transform(train_df, mapper)
-        val_result = vectorizer.transform(val_df, mapper)
+        # Load the preprocessor specific to this client
+        prep_path = Path(vectorizer_path).parent / f"{cid}_preprocessor.pkl"
+        preprocessor = ClientPreprocessor.load(str(prep_path))
 
-        if isinstance(train_result, dict):
-            X_train = train_result["data"]
-            padding_mask = train_result.get("mask", torch.ones(vectorizer.vector_size, dtype=torch.bool))
-            y_train = torch.tensor(train_df[mapper.get_target_column()].values.astype(np.float32))
-        else:
-            X_train = train_result
-            y_train = torch.tensor(train_df[mapper.get_target_column()].values.astype(np.float32))
-            padding_mask = torch.ones(vectorizer.vector_size, dtype=torch.bool)
+        X_train, y_train = preprocessor.transform(train_df)
+        X_val, y_val = preprocessor.transform(val_df)
 
-        if isinstance(val_result, dict):
-            X_val = val_result["data"]
-        else:
-            X_val = val_result
+        if not isinstance(X_train, torch.Tensor):
+            X_train = torch.tensor(X_train, dtype=torch.float32)
+            y_train = torch.tensor(y_train, dtype=torch.float32)
+            X_val = torch.tensor(X_val, dtype=torch.float32)
+            y_val = torch.tensor(y_val, dtype=torch.float32)
 
-        y_val = torch.tensor(val_df[mapper.get_target_column()].values.astype(np.float32))
+        padding_mask = preprocessor.get_padding_mask() if hasattr(preprocessor, "get_padding_mask") else None
+        if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
+            padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
+            
+        if padding_mask is None:
+            padding_mask = torch.ones(preprocessor.get_feature_dim(), dtype=torch.bool)
 
         client_data[cid] = {
             'X_train': X_train, 'y_train': y_train,
@@ -93,10 +90,10 @@ def run_manual_simulation(
         }
         logger.info("%s: train=%s, val=%s, active_features=%d/%d",
                    cid, X_train.shape, X_val.shape,
-                   padding_mask.sum().item(), vectorizer.vector_size)
+                   padding_mask.sum().item(), preprocessor.get_feature_dim())
 
     model_type = model_config.get("model_type", "mlp")
-    input_dim = vectorizer.get_feature_dim()
+    input_dim = preprocessor.get_feature_dim()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     global_model = create_model(input_dim, model_config, model_type)

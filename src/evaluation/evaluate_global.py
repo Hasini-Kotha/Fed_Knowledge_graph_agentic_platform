@@ -1,3 +1,4 @@
+
 """Global Model Evaluation."""
 
 import json
@@ -6,12 +7,6 @@ import numpy as np
 import torch
 from pathlib import Path
 from typing import Dict, Any, Optional
-
-from src.core.metadata_engine import MetadataMapper
-from src.core.vectorizer import DynamicVectorizer
-from src.models import create_model
-from src.models.train_engine import predict_proba, evaluate_model
-from src.evaluation.metrics import compute_optimal_threshold, print_metrics_report
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +28,7 @@ def load_best_checkpoint(
         return None
     
     best_ckpt = None
-    best_value = -float('inf')
+    best_value = -float("inf")
     
     for ckpt_path in checkpoints:
         ckpt = torch.load(str(ckpt_path), map_location="cpu")
@@ -47,52 +42,36 @@ def load_best_checkpoint(
 
 
 def evaluate_global_model(
-    checkpoint: Dict[str, Any],
-    global_test_csv: str,
-    mapping_path: str,
-    vectorizer_path: str,
-    model_config: Dict[str, Any]
-) -> Dict[str, Any]:
-    """Evaluate global model on holdout test set."""
+    parameters,
+    global_test_csv,
+    preprocessor_path,
+    model_config,
+    eval_config
+):
     import pandas as pd
-    
-    mapper = MetadataMapper(mapping_path)
-    vectorizer = DynamicVectorizer.load(vectorizer_path)
+    from src.data.preprocess import ClientPreprocessor
+    from src.models.tab_transformer import create_model
+    from src.models.train_engine import evaluate_model
+    import torch
     
     test_df = pd.read_csv(global_test_csv)
-    test_result = vectorizer.transform(test_df, mapper)
+    preprocessor = ClientPreprocessor.load(preprocessor_path)
+    X_test, y_test = preprocessor.transform(test_df)
     
-    if isinstance(test_result, dict):
-        X_test = test_result["data"]
-        padding_mask = test_result.get("mask")
-    else:
-        X_test = test_result
-        padding_mask = None
-    
-    y_test = test_df[mapper.get_target_column()].values.astype(np.float32)
-    
+    if not isinstance(X_test, torch.Tensor):
+        X_test = torch.tensor(X_test, dtype=torch.float32)
+        y_test = torch.tensor(y_test, dtype=torch.float32)
+        
+    padding_mask = preprocessor.get_padding_mask() if hasattr(preprocessor, "get_padding_mask") else None
+    if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
+        padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
+        
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    input_dim = X_test.shape[1]
-    model_type = model_config.get("model_type", "mlp")
+    input_dim = preprocessor.get_feature_dim()
+    model = create_model(input_dim, model_config).to(device)
+    model.set_parameters([torch.tensor(p) for p in parameters] if isinstance(parameters[0], np.ndarray) else parameters)
     
-    model = create_model(input_dim, model_config, model_type).to(device)
-    
-    if "weights" in checkpoint:
-        weights = checkpoint["weights"]
-        if isinstance(weights, list) and len(weights) > 0:
-            model.set_parameters(weights)
-    
-    eval_config = {"batch_size": model_config.get("eval_batch_size", 512)}
-    metrics = evaluate_model(model, X_test, y_test, device, eval_config["batch_size"], padding_mask=padding_mask)
-    
-    probs = predict_proba(model, X_test, device, eval_config["batch_size"], padding_mask=padding_mask)
-    optimal_threshold = compute_optimal_threshold(y_test, probs, metric="f1")
-    metrics["optimal_threshold"] = optimal_threshold
-    
-    logger.info(f"Global model evaluation complete:")
-    for k, v in metrics.items():
-        logger.info(f"  {k}: {v:.4f}")
-    
+    metrics = evaluate_model(model, X_test, y_test, device, eval_config.get("batch_size", 512), padding_mask)
     return metrics
 
 
@@ -102,8 +81,7 @@ def generate_evaluation_report(
     global_metrics: Dict[str, Any],
     output_path: str = "artifacts/reports"
 ):
-    """Generate comparison report."""
-    Path(output_path).mkdir(parents=True, exist_ok=True)
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     
     report = {
         "best_round": round_number,
@@ -111,12 +89,12 @@ def generate_evaluation_report(
         "global_holdout": global_metrics,
     }
     
-    json_path = Path(output_path) / "global_evaluation_report.json"
-    with open(json_path, 'w') as f:
+    json_path = Path(output_path).parent / "global_evaluation_report.json"
+    with open(json_path, "w") as f:
         json.dump(report, f, indent=2, default=str)
     
-    txt_path = Path(output_path) / "global_evaluation_report.txt"
-    with open(txt_path, 'w') as f:
+    txt_path = Path(output_path)
+    with open(txt_path, "w") as f:
         f.write(f"Global Model Evaluation Report\n")
         f.write(f"=" * 40 + "\n\n")
         f.write(f"Best Round: {round_number}\n\n")
@@ -134,3 +112,4 @@ def generate_evaluation_report(
                 f.write(f"  {k}: {v}\n")
     
     logger.info(f"Reports saved to {output_path}")
+

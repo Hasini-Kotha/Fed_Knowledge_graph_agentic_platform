@@ -1,0 +1,67 @@
+# Knowledge Graph Configuration — Domain-Agnostic
+# Change entity/relationship definitions here to switch domains.
+# No Python code changes required.
+
+kg:
+  name: "fraud_detection_kg"
+  version: "1.0.0"
+  domain: "fraud_detection"
+
+  # --- Entity Definitions ---
+  entities:
+    - type: "transaction"
+      id_prefix: "txn_"
+      attributes:
+        - column: "Amount"
+          attr_name: "amount"
+        - column: "Time"
+          attr_name: "timestamp"
+      label_column: "Class"
+      risk_score_attr: "risk_score"
+
+    - type: "amount_bucket"
+      derived: true
+      bucket_column: "Amount"
+      bucket_edges: [0, 50, 200, 1000, 5000, 999999]
+      bucket_labels: ["micro", "small", "medium", "large", "whale"]
+
+    - type: "time_window"
+      derived: true
+      bucket_column: "Time"
+      bucket_count: 24
+
+  # --- Relationship Definitions ---
+  relationships:
+    - type: "HAS_AMOUNT_BUCKET"
+      source_entity: "transaction"
+      target_entity: "amount_bucket"
+
+    - type: "IN_TIME_WINDOW"
+      source_entity: "transaction"
+      target_entity: "time_window"
+
+    - type: "SIMILAR_PATTERN"
+      source_entity: "transaction"
+      target_entity: "transaction"
+      similarity_features: ["V1", "V2", "V3", "V14", "V17"]
+      similarity_threshold: 0.85
+      top_k_neighbors: 10
+      batch_size: 500
+
+  # --- Risk Propagation ---
+  risk:
+    high_risk_threshold: 0.7
+    medium_risk_threshold: 0.4
+    propagation_method: "neighbor_average"
+    propagation_hops: 2
+
+  # --- Analytics ---
+  analytics:
+    community_detection: "louvain"
+    centrality_metric: "degree"
+    top_k_suspicious: 50
+
+  # --- Output ---
+  output:
+    graph_format: "graphml"
+    artifacts_dir: "artifacts/knowledge_graph"

@@ -17,3 +17,6 @@ pyyaml>=6.0
 # ray[default]>=2.6.0
 
 protobuf<4.0.0
+
+networkx>=3.0
+python-louvain>=0.16

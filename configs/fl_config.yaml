@@ -1,4 +1,4 @@
-"""FL Configuration."""
+# FL Configuration
 num_rounds: 10
 strategy: "fedprox"
 fraction_fit: 1.0

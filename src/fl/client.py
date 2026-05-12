@@ -11,7 +11,7 @@ Security: Before sending weights back to server, the client applies:
 """
 
 import logging
-from typing import Dict, List, Tuple, Any
+from typing import Dict, List, Tuple, Any, Optional
 
 import numpy as np
 import torch
@@ -142,3 +142,46 @@ class FederatedClient(fl.client.NumPyClient):
 
         num_examples = len(self.X_val)
         return float(metrics.get("roc_auc", 0.5) * -1 + 1), num_examples, metrics
+def create_client_fn(
+    client_id: str,
+    data_dir: str,
+    artifacts_dir: str,
+    model_config: Dict[str, Any],
+    train_config: Dict[str, Any],
+    privacy_config: Dict[str, Any] = None
+):
+    import pandas as pd
+    from pathlib import Path
+    from src.data.preprocess import ClientPreprocessor
+
+    train_df = pd.read_csv(f"{data_dir}/{client_id}_train.csv")
+    val_df = pd.read_csv(f"{data_dir}/{client_id}_val.csv")
+
+    prep_path = Path(artifacts_dir) / "preprocessors" / f"{client_id}_preprocessor.pkl"
+    preprocessor = ClientPreprocessor.load(str(prep_path))
+
+    X_train, y_train = preprocessor.transform(train_df)
+    X_val, y_val = preprocessor.transform(val_df)
+
+    if not isinstance(X_train, torch.Tensor):
+        X_train = torch.tensor(X_train, dtype=torch.float32)
+        y_train = torch.tensor(y_train, dtype=torch.float32)
+        X_val = torch.tensor(X_val, dtype=torch.float32)
+        y_val = torch.tensor(y_val, dtype=torch.float32)
+
+    padding_mask = preprocessor.get_padding_mask() if hasattr(preprocessor, "get_padding_mask") else None
+    if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
+        padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
+
+    return FederatedClient(
+        client_id=client_id,
+        X_train=X_train,
+        y_train=y_train,
+        X_val=X_val,
+        y_val=y_val,
+        model_config=model_config,
+        train_config=train_config,
+        privacy_config=privacy_config,
+        padding_mask=padding_mask
+    )
+

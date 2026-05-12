@@ -1,0 +1,75 @@
+{
+  "build_stats": {
+    "total_nodes": 779,
+    "total_edges": 6021,
+    "node_types": {
+      "transaction": 750,
+      "amount_bucket": 5,
+      "time_window": 24
+    },
+    "edge_types": {
+      "HAS_AMOUNT_BUCKET": 750,
+      "IN_TIME_WINDOW": 750,
+      "SIMILAR_PATTERN": 4521
+    }
+  },
+  "enrichment_stats": {
+    "total_transactions": 750,
+    "avg_risk_score": 0.3316796254751583,
+    "max_risk_score": 0.5063917636871338,
+    "min_risk_score": 0.01051987987011671,
+    "std_risk_score": 0.07171448594623182,
+    "risk_tiers": {
+      "high": 0,
+      "medium": 129,
+      "low": 621
+    },
+    "avg_neighborhood_risk": 0.3322561789733156
+  },
+  "graph_summary": {
+    "total_nodes": 779,
+    "total_edges": 6021,
+    "transaction_nodes": 750,
+    "derived_nodes": 29,
+    "density": 0.01986925430071511,
+    "connected_components": 1
+  },
+  "community_results": {
+    "method": "louvain",
+    "num_communities": 16,
+    "avg_size": 46.875
+  },
+  "centrality_top_5": [
+    {
+      "id": "txn_461",
+      "centrality": 0.03471295060080107,
+      "risk_score": 0.41189855337142944,
+      "risk_tier": "medium"
+    },
+    {
+      "id": "txn_145",
+      "centrality": 0.028037383177570093,
+      "risk_score": 0.307176411151886,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_61",
+      "centrality": 0.0267022696929239,
+      "risk_score": 0.3017416000366211,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_98",
+      "centrality": 0.0267022696929239,
+      "risk_score": 0.3586358428001404,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_379",
+      "centrality": 0.0267022696929239,
+      "risk_score": 0.4387473464012146,
+      "risk_tier": "medium"
+    }
+  ],
+  "risk_clusters": []
+}

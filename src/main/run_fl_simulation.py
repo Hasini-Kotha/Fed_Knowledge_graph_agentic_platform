@@ -153,24 +153,39 @@ def main():
         if "ray" in str(e).lower():
             logger.warning("Ray unavailable — falling back to manual Ray-free loop.")
             from src.fl.manual_loop import run_manual_simulation
-            run_manual_simulation(
-                client_fn=client_fn,
-                client_ids=simulation_client_ids,
-                num_rounds=num_rounds,
-                strategy=strategy,
+            metrics_history = run_manual_simulation(
+                client_ids=["client_a", "client_b", "client_c"],
+                data_dir=data_dir,
+                mapping_path="configs/mapping.json",
+                vectorizer_path=str(preprocessors_dir / "client_a_preprocessor.pkl"),
+                model_config=model_config,
+                train_config=train_config,
+                fl_config=fl_config,
+                privacy_config=fl_config.get("secure_update") or {},
+                artifacts_dir=str(artifacts_dir / "global_model"),
+                strategy_type=fl_config.get("strategy", "fedprox")
             )
+            strategy.round_metrics_history = metrics_history
+            strategy.save_metrics_history = lambda: None
         else:
             raise e
     except Exception as e:
         logger.error("Simulation failed (%s) — attempting manual fallback.", e)
         from src.fl.manual_loop import run_manual_simulation
-        run_manual_simulation(
-            client_fn=client_fn,
-            client_ids=simulation_client_ids,
-            num_rounds=num_rounds,
-            strategy=strategy,
+        metrics_history = run_manual_simulation(
+            client_ids=["client_a", "client_b", "client_c"],
+            data_dir=data_dir,
+            mapping_path="configs/mapping.json",
+            vectorizer_path=str(preprocessors_dir / "client_a_preprocessor.pkl"),
+            model_config=model_config,
+            train_config=train_config,
+            fl_config=fl_config,
+            privacy_config=fl_config.get("secure_update") or {},
+            artifacts_dir=str(artifacts_dir / "global_model"),
+            strategy_type=fl_config.get("strategy", "fedprox")
         )
-    
+        strategy.round_metrics_history = metrics_history
+        strategy.save_metrics_history = lambda: None
     # Step 7 - Save History
     strategy.save_metrics_history()
     
@@ -183,18 +198,22 @@ def main():
     total_rounds = len(metrics_history)
     final_round = metrics_history[-1]
     
-    best_round = max(metrics_history, key=lambda x: x["metrics"].get("pr_auc", 0.0))
+    def get_metric(rd, key):
+        if "metrics" in rd: return rd["metrics"].get(key, 0.0)
+        return rd.get(key, 0.0)
+        
+    best_round = max(metrics_history, key=lambda x: get_metric(x, "pr_auc"))
     
     summary = f"""
     ============================================
     FL Simulation Completed in {(time.time() - start_time) / 60:.2f} minutes
     - Total rounds completed: {total_rounds}
     - Final round ({final_round['round']}) Metrics:
-      ROC-AUC: {final_round['metrics'].get('roc_auc', 0.0):.4f}
-      PR-AUC:  {final_round['metrics'].get('pr_auc', 0.0):.4f}
-      F1:      {final_round['metrics'].get('f1', 0.0):.4f}
+      ROC-AUC: {get_metric(final_round, 'roc_auc'):.4f}
+      PR-AUC:  {get_metric(final_round, 'pr_auc'):.4f}
+      F1:      {get_metric(final_round, 'f1'):.4f}
       
-    - Best round by PR-AUC: Round {best_round['round']} with PR-AUC = {best_round['metrics'].get('pr_auc', 0.0):.4f}
+    - Best round by PR-AUC: Round {best_round['round']} with PR-AUC = {get_metric(best_round, 'pr_auc'):.4f}
     - Global model checkpoints saved to: {artifacts_dir}/global_model/
     ============================================
     """

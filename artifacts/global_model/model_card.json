@@ -1,35 +1,19 @@
 {
     "model_type": "TabularMLP",
-    "input_dim": 128,
-    "hidden_dims": [64, 32],
-    "trained_rounds": 20,
-    "selected_round": 20,
+    "input_dim": 64,
+    "hidden_dims": [
+        64,
+        32
+    ],
+    "trained_rounds": 10,
+    "selected_round": 3,
     "selection_metric": "pr_auc",
-    "fl_validation": {
-        "roc_auc": 0.9669,
-        "pr_auc": 0.7948,
-        "f1": 0.7654,
-        "precision": 0.8936,
-        "recall": 0.6708,
-        "accuracy": 0.9993
-    },
-    "global_holdout": {
-        "roc_auc": 0.9799,
-        "pr_auc": 0.7559,
-        "f1": 0.7344,
-        "precision": 0.8704,
-        "recall": 0.6351,
-        "accuracy": 0.9992,
-        "optimal_threshold": 0.44
-    },
-    "strategy": "fedprox",
-    "fedprox_mu": 0.01,
-    "dataset": "Kaggle MLG-ULB creditcard.csv (284,807 rows)",
+    "global_test_pr_auc": 0.0016835016835016834,
+    "global_test_roc_auc": 0.20827770360480646,
+    "global_test_f1": 0.0,
+    "optimal_threshold": 0.2699999999999999,
+    "dataset": "kaggle",
     "num_clients": 3,
-    "iid_split": true,
-    "positive_ratio": 0.0017,
-    "vector_size": 128,
-    "active_features": 30,
-    "platform": "Manual FL Loop (Ray-free)",
-    "timestamp": "2026-05-03"
+    "platform": "Flower FedAvg",
+    "handoff_note": "Ready for Prediction Layer. Load FINAL_global_model.pt with model_card.json for inference."
 }
