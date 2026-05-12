@@ -1,4 +1,4 @@
-"""Data Pipeline Configuration."""
+# Data Pipeline Configuration
 data:
   source: "kaggle"
   data_dir: "Sample_datasets"

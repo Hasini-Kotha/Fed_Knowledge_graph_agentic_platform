@@ -1,0 +1,287 @@
+[
+  {
+    "transaction_id": "txn_388",
+    "risk_score": 0.6307190656661987,
+    "risk_tier": "medium",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.3725279822624595,
+    "neighbor_count": 882,
+    "amount": 155.27660394311502,
+    "timestamp": 44764.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "small",
+      "IN_TIME_WINDOW": "10"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [
+      {
+        "id": "txn_1131",
+        "risk_score": 0.5376005172729492,
+        "risk_tier": "medium",
+        "similarity": 0.9856217503547668
+      },
+      {
+        "id": "txn_565",
+        "risk_score": 0.46468043327331543,
+        "risk_tier": "medium",
+        "similarity": 0.9489145874977112
+      },
+      {
+        "id": "txn_1298",
+        "risk_score": 0.5428009629249573,
+        "risk_tier": "medium",
+        "similarity": 0.9169408082962036
+      },
+      {
+        "id": "txn_1363",
+        "risk_score": 0.3730344772338867,
+        "risk_tier": "low",
+        "similarity": 0.915830671787262
+      },
+      {
+        "id": "txn_590",
+        "risk_score": 0.39231204986572266,
+        "risk_tier": "low",
+        "similarity": 0.9137569665908813
+      }
+    ],
+    "community": {
+      "community_id": 12,
+      "size": 101,
+      "avg_risk": 0.3786676734095753,
+      "max_risk": 0.6307190656661987,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "model_prediction": "SUSPICIOUS",
+    "evidence_summary": "This transaction has a fraud risk score of 0.631 (medium risk). Its 882 graph neighbors have an average risk of 0.373. Connected entities: HAS_AMOUNT_BUCKET: small, IN_TIME_WINDOW: 10. It shares feature patterns with 5 similar transaction(s) (avg similarity: 0.94). It belongs to community 12 (size: 101, high-risk ratio: 0%)."
+  },
+  {
+    "transaction_id": "txn_1342",
+    "risk_score": 0.6296393275260925,
+    "risk_tier": "medium",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.3634242318159777,
+    "neighbor_count": 671,
+    "amount": 47.03394819051845,
+    "timestamp": 26777.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "micro",
+      "IN_TIME_WINDOW": "6"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [
+      {
+        "id": "txn_1327",
+        "risk_score": 0.4035910964012146,
+        "risk_tier": "medium",
+        "similarity": 0.9873926639556885
+      },
+      {
+        "id": "txn_1148",
+        "risk_score": 0.3458727300167084,
+        "risk_tier": "low",
+        "similarity": 0.9726303219795227
+      },
+      {
+        "id": "txn_169",
+        "risk_score": 0.43628814816474915,
+        "risk_tier": "medium",
+        "similarity": 0.9481745958328247
+      },
+      {
+        "id": "txn_584",
+        "risk_score": 0.3759317100048065,
+        "risk_tier": "low",
+        "similarity": 0.9432356357574463
+      },
+      {
+        "id": "txn_1312",
+        "risk_score": 0.36388856172561646,
+        "risk_tier": "low",
+        "similarity": 0.9358533620834351
+      }
+    ],
+    "community": {
+      "community_id": 11,
+      "size": 39,
+      "avg_risk": 0.39178375135629606,
+      "max_risk": 0.6296393275260925,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "model_prediction": "SUSPICIOUS",
+    "evidence_summary": "This transaction has a fraud risk score of 0.630 (medium risk). Its 671 graph neighbors have an average risk of 0.363. Connected entities: HAS_AMOUNT_BUCKET: micro, IN_TIME_WINDOW: 6. It shares feature patterns with 5 similar transaction(s) (avg similarity: 0.96). It belongs to community 11 (size: 39, high-risk ratio: 0%)."
+  },
+  {
+    "transaction_id": "txn_902",
+    "risk_score": 0.6177883148193359,
+    "risk_tier": "medium",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.37724308096445525,
+    "neighbor_count": 182,
+    "amount": 226.77704946407465,
+    "timestamp": 36494.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "medium",
+      "IN_TIME_WINDOW": "8"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [
+      {
+        "id": "txn_502",
+        "risk_score": 0.3666877746582031,
+        "risk_tier": "low",
+        "similarity": 0.9916402101516724
+      },
+      {
+        "id": "txn_666",
+        "risk_score": 0.3973049521446228,
+        "risk_tier": "low",
+        "similarity": 0.9450606107711792
+      },
+      {
+        "id": "txn_1281",
+        "risk_score": 0.34657254815101624,
+        "risk_tier": "low",
+        "similarity": 0.9447256326675415
+      },
+      {
+        "id": "txn_723",
+        "risk_score": 0.5237189531326294,
+        "risk_tier": "medium",
+        "similarity": 0.941376268863678
+      },
+      {
+        "id": "txn_218",
+        "risk_score": 0.3949556350708008,
+        "risk_tier": "low",
+        "similarity": 0.9303713440895081
+      }
+    ],
+    "community": {
+      "community_id": 12,
+      "size": 101,
+      "avg_risk": 0.3786676734095753,
+      "max_risk": 0.6307190656661987,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "model_prediction": "SUSPICIOUS",
+    "evidence_summary": "This transaction has a fraud risk score of 0.618 (medium risk). Its 182 graph neighbors have an average risk of 0.377. Connected entities: HAS_AMOUNT_BUCKET: medium, IN_TIME_WINDOW: 8. It shares feature patterns with 5 similar transaction(s) (avg similarity: 0.95). It belongs to community 12 (size: 101, high-risk ratio: 0%)."
+  },
+  {
+    "transaction_id": "txn_418",
+    "risk_score": 0.6090734004974365,
+    "risk_tier": "medium",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.37019504040071877,
+    "neighbor_count": 877,
+    "amount": 50.20550710066014,
+    "timestamp": 96386.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "small",
+      "IN_TIME_WINDOW": "23"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [
+      {
+        "id": "txn_1236",
+        "risk_score": 0.32883545756340027,
+        "risk_tier": "low",
+        "similarity": 0.9654802680015564
+      },
+      {
+        "id": "txn_448",
+        "risk_score": 0.357305645942688,
+        "risk_tier": "low",
+        "similarity": 0.9631388783454895
+      },
+      {
+        "id": "txn_505",
+        "risk_score": 0.3542679250240326,
+        "risk_tier": "low",
+        "similarity": 0.9561445116996765
+      },
+      {
+        "id": "txn_706",
+        "risk_score": 0.44222480058670044,
+        "risk_tier": "medium",
+        "similarity": 0.955324649810791
+      },
+      {
+        "id": "txn_4",
+        "risk_score": 0.36716046929359436,
+        "risk_tier": "low",
+        "similarity": 0.9436740279197693
+      }
+    ],
+    "community": {
+      "community_id": 1,
+      "size": 152,
+      "avg_risk": 0.3879188060956566,
+      "max_risk": 0.6090734004974365,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "model_prediction": "SUSPICIOUS",
+    "evidence_summary": "This transaction has a fraud risk score of 0.609 (medium risk). Its 877 graph neighbors have an average risk of 0.370. Connected entities: HAS_AMOUNT_BUCKET: small, IN_TIME_WINDOW: 23. It shares feature patterns with 5 similar transaction(s) (avg similarity: 0.96). It belongs to community 1 (size: 152, high-risk ratio: 0%)."
+  },
+  {
+    "transaction_id": "txn_1402",
+    "risk_score": 0.6089692115783691,
+    "risk_tier": "medium",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.3724421275694939,
+    "neighbor_count": 880,
+    "amount": 56.52331265901259,
+    "timestamp": 32797.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "small",
+      "IN_TIME_WINDOW": "7"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [
+      {
+        "id": "txn_236",
+        "risk_score": 0.5499116778373718,
+        "risk_tier": "medium",
+        "similarity": 0.9625325798988342
+      },
+      {
+        "id": "txn_415",
+        "risk_score": 0.34722763299942017,
+        "risk_tier": "low",
+        "similarity": 0.9390618205070496
+      },
+      {
+        "id": "txn_531",
+        "risk_score": 0.34142863750457764,
+        "risk_tier": "low",
+        "similarity": 0.9314882755279541
+      },
+      {
+        "id": "txn_128",
+        "risk_score": 0.4253081679344177,
+        "risk_tier": "medium",
+        "similarity": 0.9264001250267029
+      },
+      {
+        "id": "txn_655",
+        "risk_score": 0.3284207880496979,
+        "risk_tier": "low",
+        "similarity": 0.9223188757896423
+      }
+    ],
+    "community": {
+      "community_id": 3,
+      "size": 64,
+      "avg_risk": 0.4234158836770803,
+      "max_risk": 0.6089692115783691,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "model_prediction": "SUSPICIOUS",
+    "evidence_summary": "This transaction has a fraud risk score of 0.609 (medium risk). Its 880 graph neighbors have an average risk of 0.372. Connected entities: HAS_AMOUNT_BUCKET: small, IN_TIME_WINDOW: 7. It shares feature patterns with 5 similar transaction(s) (avg similarity: 0.94). It belongs to community 3 (size: 64, high-risk ratio: 0%)."
+  }
+]

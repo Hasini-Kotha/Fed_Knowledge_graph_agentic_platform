@@ -1,0 +1,92 @@
+{
+  "build_stats": {
+    "total_nodes": 1529,
+    "total_edges": 11680,
+    "node_types": {
+      "transaction": 1500,
+      "amount_bucket": 5,
+      "time_window": 24
+    },
+    "edge_types": {
+      "HAS_AMOUNT_BUCKET": 1500,
+      "IN_TIME_WINDOW": 1500,
+      "SIMILAR_PATTERN": 8680
+    }
+  },
+  "enrichment_stats": {
+    "total_transactions": 1500,
+    "avg_risk_score": 0.36607979072630403,
+    "max_risk_score": 0.6307190656661987,
+    "min_risk_score": 0.09152965247631073,
+    "std_risk_score": 0.09637577014536941,
+    "risk_tiers": {
+      "high": 0,
+      "medium": 542,
+      "low": 958
+    },
+    "avg_neighborhood_risk": 0.366343224888747
+  },
+  "graph_summary": {
+    "total_nodes": 1529,
+    "total_edges": 11680,
+    "transaction_nodes": 1500,
+    "derived_nodes": 29,
+    "density": 0.009998664561924948,
+    "connected_components": 3
+  },
+  "community_results": {
+    "method": "louvain",
+    "num_communities": 17,
+    "avg_size": 88.23529411764706
+  },
+  "centrality_top_5": [
+    {
+      "id": "txn_135",
+      "centrality": 0.0133422281521014,
+      "risk_score": 0.15639421343803406,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_373",
+      "centrality": 0.0133422281521014,
+      "risk_score": 0.17346976697444916,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_423",
+      "centrality": 0.01267511674449633,
+      "risk_score": 0.09152965247631073,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_235",
+      "centrality": 0.01200800533689126,
+      "risk_score": 0.2966976761817932,
+      "risk_tier": "low"
+    },
+    {
+      "id": "txn_1372",
+      "centrality": 0.01200800533689126,
+      "risk_score": 0.3470875024795532,
+      "risk_tier": "low"
+    }
+  ],
+  "risk_clusters": [
+    {
+      "community_id": 3,
+      "size": 64,
+      "avg_risk": 0.4234158836770803,
+      "max_risk": 0.6089692115783691,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    {
+      "community_id": 16,
+      "size": 84,
+      "avg_risk": 0.4156929648348263,
+      "max_risk": 0.5906112194061279,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    }
+  ]
+}

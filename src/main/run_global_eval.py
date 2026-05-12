@@ -39,7 +39,7 @@ def create_mock_checkpoint_if_needed(artifacts_dir: pathlib.Path, model_config: 
         return
         
     logger.warning("No global checkpoints found. Creating a mock checkpoint for evaluation purposes.")
-    from src.models.mlp import create_model
+    from src.models import create_model
     
     input_dim = 30 # Default for our dataset
     try:
@@ -164,8 +164,8 @@ def main():
     # Step 3 - Find Optimal Threshold on Global Test using shared predict_proba()
     import pandas as pd
     from src.data.preprocess import ClientPreprocessor
-    from src.models.mlp import create_model
-    from src.models.train_local import predict_proba
+    from src.models import create_model
+    from src.models.train_engine import predict_proba
 
     df_test = pd.read_csv(global_test_csv)
     preprocessor = ClientPreprocessor.load(str(preprocessor_path))
