@@ -61,3 +61,4 @@ generate_mock_data(n_samples=1500, n_frauds=15).to_csv(
 
 print("Mock data generated successfully in data/splits/")
 print("Next: run 'python src/main/run_single_baseline.py --client client_a' for each client.")
+ 

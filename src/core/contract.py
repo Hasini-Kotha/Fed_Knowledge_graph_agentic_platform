@@ -89,4 +89,4 @@ class TrimmedMeanConfig:
 DEFAULT_VECTOR_CONTRACT = VectorContract(vector_size=128)
 DEFAULT_PRIVACY_CONFIG = PrivacyConfig()
 DEFAULT_FEDPROX_CONFIG = FedProxConfig()
-DEFAULT_TRIMMED_MEAN_CONFIG = TrimmedMeanConfig()
+DEFAULT_TRIMMED_MEAN_CONFIG = TrimmedMeanConfig() 

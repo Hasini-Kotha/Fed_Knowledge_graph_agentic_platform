@@ -536,3 +536,4 @@ Each layer depends only on the layers below it. `src/fl/` imports from `src/mode
 ---
 
 *This platform is production-grade for the FL layer (Layers 1-2). The Knowledge Graph (Layer 3), Explainability (Layer 4), and Agentic Engine (Layer 5) are designed but not yet implemented.*
+ 

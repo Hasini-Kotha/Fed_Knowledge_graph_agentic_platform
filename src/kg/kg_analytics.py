@@ -232,3 +232,4 @@ class KGAnalytics:
             "density": nx.density(self.graph) if self.graph.number_of_nodes() > 1 else 0.0,
             "connected_components": nx.number_connected_components(self.graph),
         }
+ 

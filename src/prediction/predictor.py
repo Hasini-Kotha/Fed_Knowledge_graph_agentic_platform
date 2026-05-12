@@ -211,3 +211,4 @@ class GlobalModelPredictor:
             f"threshold={self.threshold:.2f}, "
             f"device={self.device})"
         )
+ 
