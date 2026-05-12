@@ -22,4 +22,4 @@ vectorizer:
 columns:
   label_column: "Class"
   label_positive: 1
-  label_negative: 0
+  label_negative: 0 
