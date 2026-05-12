@@ -1,4 +1,3 @@
-# The Fraud Detection Platform: A Plain-English Guide
 
 
 
