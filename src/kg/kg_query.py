@@ -202,11 +202,12 @@ class KGQueryEngine:
     def generate_evidence_bundle(self, transaction_id: str) -> Dict[str, Any]:
         """Generate the complete evidence bundle for the Explainability layer.
 
-        This is the MAIN OUTPUT consumed by Layer 4 (LLM).  It combines:
-        - Transaction context (risk score, tier, neighborhood)
-        - Similar flagged transactions
-        - Community membership
-        - A plain-English summary string (template-based, no LLM needed)
+        Combines:
+        - Transaction context (risk score, tier, neighborhood risk via SIMILAR_PATTERN)
+        - Behavioural cluster context (size, fraud ratio — from similarity communities)
+        - Time window context (window fraud rate vs baseline)
+        - Similar high-risk transactions
+        - Plain-English summary string (template-based, LLM-ready)
 
         Args:
             transaction_id: Node ID to generate evidence for.
@@ -228,8 +229,10 @@ class KGQueryEngine:
         community = self.get_community_summary(self.graph, transaction_id)
         context["community"] = community
 
+        # Get time window context for this transaction
+        context["time_window_context"] = self._get_time_window_context(transaction_id)
+
         # Determine model prediction label
-        risk_score = context.get("risk_score", 0.0)
         risk_tier = context.get("risk_tier", "low")
         context["model_prediction"] = "FRAUD" if risk_tier == "high" else (
             "SUSPICIOUS" if risk_tier == "medium" else "LEGITIMATE"
@@ -240,6 +243,29 @@ class KGQueryEngine:
 
         return context
 
+    def _get_time_window_context(self, transaction_id: str) -> Dict[str, Any]:
+        """Get the time window context for a transaction node.
+
+        Args:
+            transaction_id: Transaction node ID.
+
+        Returns:
+            Dict with window_id, fraud_rate, baseline_rate, elevation_factor.
+        """
+        for nbr in self.graph.neighbors(transaction_id):
+            edge_data = self.graph.edges[transaction_id, nbr]
+            if edge_data.get("relationship") == "IN_TIME_WINDOW":
+                win_data = self.graph.nodes[nbr]
+                return {
+                    "window_id": nbr,
+                    "fraud_rate": win_data.get("fraud_rate", None),
+                    "baseline_rate": win_data.get("baseline_rate", None),
+                    "elevation_factor": win_data.get("elevation_factor", 1.0),
+                    "elevated": win_data.get("elevated", False),
+                    "total_transactions_in_window": win_data.get("total_count", 0),
+                }
+        return {}
+
     def _generate_summary_text(
         self,
         context: Dict[str, Any],
@@ -248,7 +274,7 @@ class KGQueryEngine:
     ) -> str:
         """Generate a template-based plain-English summary.
 
-        No LLM involved — just f-strings.  Layer 4 can later use this as input
+        No LLM involved — just f-strings.  Layer 4 uses this as input
         to a more sophisticated explanation generator.
         """
         parts = []
@@ -260,38 +286,70 @@ class KGQueryEngine:
             f"({risk_tier} risk)."
         )
 
+        # Neighborhood risk — now reflects SIMILAR_PATTERN peers only (not hub-diluted)
         n_risk = context.get("neighborhood_risk", 0.0)
         n_count = context.get("neighbor_count", 0)
         if n_count > 0:
             parts.append(
-                f"Its {n_count} graph neighbors have an average risk of {n_risk:.3f}."
+                f"Its {n_count} behaviorally similar peer(s) have an average "
+                f"fraud risk of {n_risk:.3f}."
             )
 
+        # Structural context (amount bucket, time window)
         connected = context.get("connected_entities", {})
         if connected:
             entity_parts = [f"{rel}: {val}" for rel, val in connected.items()]
             parts.append(f"Connected entities: {', '.join(entity_parts)}.")
 
+        # Direct high-risk neighbours
         hr_count = context.get("connected_high_risk_count", 0)
         if hr_count > 0:
             parts.append(
                 f"It is directly connected to {hr_count} high-risk transaction(s)."
             )
 
+        # Similar flagged transactions
         if similar:
             sim_count = len(similar)
             avg_sim = np.mean([s["similarity"] for s in similar])
+            high_risk_similar = sum(1 for s in similar if s.get("risk_tier") == "high")
             parts.append(
-                f"It shares feature patterns with {sim_count} similar transaction(s) "
-                f"(avg similarity: {avg_sim:.2f})."
+                f"It shares behavioural patterns with {sim_count} similar transaction(s) "
+                f"(avg similarity: {avg_sim:.2f}, of which {high_risk_similar} are high-risk)."
             )
 
+        # Cluster context — now meaningful (similarity-only communities)
         if community.get("community_id", -1) >= 0:
-            parts.append(
-                f"It belongs to community {community['community_id']} "
-                f"(size: {community['size']}, "
-                f"high-risk ratio: {community['high_risk_ratio']:.0%})."
-            )
+            size = community.get("size", 0)
+            high_risk_ratio = community.get("high_risk_ratio", 0.0)
+            high_risk_count = community.get("high_risk_count", 0)
+            if high_risk_ratio > 0:
+                parts.append(
+                    f"It belongs to behavioural cluster #{community['community_id']} "
+                    f"(size: {size}, {high_risk_count} confirmed fraud = "
+                    f"{high_risk_ratio:.0%} fraud rate — ELEVATED cluster)."
+                )
+            else:
+                parts.append(
+                    f"It belongs to cluster #{community['community_id']} "
+                    f"(size: {size}, no confirmed fraud in cluster)."
+                )
+
+        # Time window context
+        tw = context.get("time_window_context", {})
+        if tw and tw.get("fraud_rate") is not None:
+            ef = tw.get("elevation_factor", 1.0)
+            fr = tw.get("fraud_rate", 0.0)
+            win_id = tw.get("window_id", "unknown")
+            if tw.get("elevated"):
+                parts.append(
+                    f"Time window {win_id} has a fraud rate of {fr:.2%} — "
+                    f"{ef:.1f}x elevated vs the {tw.get('baseline_rate', 0):.2%} baseline."
+                )
+            else:
+                parts.append(
+                    f"Time window {win_id} has a normal fraud rate ({fr:.2%})."
+                )
 
         return " ".join(parts)
 

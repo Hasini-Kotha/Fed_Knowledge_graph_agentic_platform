@@ -99,13 +99,6 @@ def main():
     X_val = torch.tensor(X_val_np, dtype=torch.float32)
     y_val = torch.tensor(y_val_np, dtype=torch.float32)
     
-    import torch
-    if not isinstance(X_train, torch.Tensor):
-        X_train = torch.tensor(X_train, dtype=torch.float32)
-        y_train = torch.tensor(y_train, dtype=torch.float32)
-        X_val = torch.tensor(X_val, dtype=torch.float32)
-        y_val = torch.tensor(y_val, dtype=torch.float32)
-    
     preprocessor_path = artifacts_dir / "preprocessors" / f"{client}_preprocessor.pkl"
     preprocessor.save(preprocessor_path)
     

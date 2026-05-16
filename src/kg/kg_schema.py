@@ -32,6 +32,7 @@ class EntityType:
     bucket_edges: List[float] = field(default_factory=list)
     bucket_labels: List[str] = field(default_factory=list)
     bucket_count: int = 0
+    bucket_width: float = 0.0
 
     def __repr__(self) -> str:
         kind = "derived" if self.derived else "primary"

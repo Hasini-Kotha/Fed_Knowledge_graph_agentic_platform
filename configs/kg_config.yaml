@@ -28,7 +28,7 @@ kg:
     - type: "time_window"
       derived: true
       bucket_column: "Time"
-      bucket_count: 24
+      bucket_width: 7200  # 7200 seconds = 2-hour sliding window slots
 
   # --- Relationship Definitions ---
   relationships:

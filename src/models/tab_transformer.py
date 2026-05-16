@@ -235,6 +235,27 @@ class TabularMLP(nn.Module):
     def forward(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         return self.network(x)
 
+    def get_embeddings(self, x: torch.Tensor) -> torch.Tensor:
+        """Extract learned hidden-layer representation (before output head).
+
+        Returns the output of the second-to-last layer — a semantically rich
+        embedding that the model learned to discriminate fraud.  Used by the KG
+        builder to compute behaviorally meaningful similarity edges instead of
+        raw PCA features.
+
+        Args:
+            x: Input tensor of shape (N, input_dim).
+
+        Returns:
+            Embedding tensor of shape (N, hidden_dims[-1]).
+        """
+        # Run all layers except the very last Linear (output head)
+        # network = [Linear, BN, ReLU, Dropout, ..., Linear(output)]
+        layers = list(self.network.children())
+        for layer in layers[:-1]:  # skip final Linear
+            x = layer(x)
+        return x  # shape: (N, hidden_dims[-1])  e.g. (N, 32)
+
     def predict_proba(self, x: torch.Tensor, padding_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         logits = self.forward(x)
         return torch.sigmoid(logits)

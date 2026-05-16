@@ -204,6 +204,26 @@ def run_manual_simulation(
                    round_metrics['roc_auc'], round_metrics['pr_auc'],
                    round_metrics['f1'], dp_info)
 
+        # Early Stopping & Best Model Tracking
+        patience = fl_config.get("patience", 5)
+        current_metric = round_metrics.get("roc_auc", 0.0)
+        
+        # Initialize tracking variables if first round
+        if round_num == 1:
+            best_metric = -1.0
+            epochs_no_improve = 0
+
+        if current_metric > best_metric:
+            best_metric = current_metric
+            epochs_no_improve = 0
+            _save_checkpoint("best", global_params, round_metrics, artifacts_dir)
+            logger.info("  *** New best global model! roc_auc=%.4f", best_metric)
+        else:
+            epochs_no_improve += 1
+            if epochs_no_improve >= patience:
+                logger.info("Early stopping triggered after %d rounds without improvement.", epochs_no_improve)
+                break
+
     if dp_enabled:
         dp_report = accountant.report()
         logger.info(dp_report)
@@ -271,7 +291,10 @@ def _aggregate_metrics(eval_results, round_num):
 
 def _save_checkpoint(round_num, params, metrics, artifacts_dir):
     """Save round checkpoint with SHA-256 checksum."""
-    checkpoint_path = Path(artifacts_dir) / f"round_{round_num:03d}_checkpoint.pt"
+    if isinstance(round_num, str):
+        checkpoint_path = Path(artifacts_dir) / f"round_{round_num}_checkpoint.pt"
+    else:
+        checkpoint_path = Path(artifacts_dir) / f"round_{round_num:03d}_checkpoint.pt"
 
     weights = [p.clone().detach() for p in params]
 

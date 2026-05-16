@@ -43,12 +43,12 @@ class KGAnalytics:
             method: Detection method. Defaults to schema config.
 
         Returns:
-            Dict with community count and size distribution.
+            Dict with community count, size distribution, and risk stats.
         """
         if method is None:
             method = self.schema.analytics_config.get("community_detection", "louvain")
 
-        # Extract transaction-only subgraph for community detection
+        # ── Step 1: Extract transaction-only nodes ──────────────────────────
         txn_nodes = [
             nid for nid, data in self.graph.nodes(data=True)
             if data.get("entity_type") == self._primary_type
@@ -56,31 +56,74 @@ class KGAnalytics:
 
         if len(txn_nodes) < 2:
             logger.warning("Too few transaction nodes (%d) for community detection", len(txn_nodes))
-            return {"num_communities": 0, "sizes": []}
+            return {"num_communities": 0, "sizes": [], "risk_clusters": 0}
 
-        txn_subgraph = self.graph.subgraph(txn_nodes)
+        # ── Step 2: Build SIMILARITY-ONLY subgraph ──────────────────────────
+        # Exclude structural hub edges (HAS_AMOUNT_BUCKET, IN_TIME_WINDOW).
+        # Those hub nodes make the graph a single connected component, which
+        # destroys community structure.  SIMILAR_PATTERN edges reflect genuine
+        # behavioural similarity in the MLP embedding space.
+        sim_subgraph = nx.Graph()
+        sim_subgraph.add_nodes_from(
+            (nid, self.graph.nodes[nid]) for nid in txn_nodes
+        )
+        for u, v, data in self.graph.edges(data=True):
+            if (
+                data.get("relationship") == "SIMILAR_PATTERN"
+                and u in sim_subgraph
+                and v in sim_subgraph
+            ):
+                sim_subgraph.add_edge(u, v, **data)
 
+        logger.info(
+            "Similarity-only subgraph: %d nodes, %d edges",
+            sim_subgraph.number_of_nodes(),
+            sim_subgraph.number_of_edges(),
+        )
+
+        # ── Step 3: Run community detection ────────────────────────────────
         if method == "louvain":
-            partition = self._louvain_communities(txn_subgraph)
+            partition = self._louvain_communities(sim_subgraph)
         else:
-            partition = self._greedy_communities(txn_subgraph)
+            partition = self._greedy_communities(sim_subgraph)
 
-        # Assign community IDs back to the main graph
+        # ── Step 4: Assign community IDs back to the FULL graph ─────────────
         for node_id, comm_id in partition.items():
             if self.graph.has_node(node_id):
                 self.graph.nodes[node_id]["community_id"] = int(comm_id)
 
-        # Compute sizes
+        # Nodes not in similarity subgraph (isolated) get community_id = -1
+        partition_set = set(partition.keys())
+        for nid in txn_nodes:
+            if nid not in partition_set:
+                self.graph.nodes[nid]["community_id"] = -1
+
+        # ── Step 5: Compute size distribution and risk stats ────────────────
         community_sizes: Dict[int, int] = {}
+        community_fraud: Dict[int, int] = {}
+
         for comm_id in partition.values():
             community_sizes[comm_id] = community_sizes.get(comm_id, 0) + 1
+
+        for nid, comm_id in partition.items():
+            if self.graph.nodes[nid].get("risk_tier") == "high":
+                community_fraud[comm_id] = community_fraud.get(comm_id, 0) + 1
 
         num_communities = len(community_sizes)
         sizes = sorted(community_sizes.values(), reverse=True)
 
+        # Risk clusters: communities with at least 1 high-risk member AND
+        # fraud_ratio >= medium threshold (configurable)
+        high_risk_thresh = self.schema.risk_config.get("medium_risk_threshold", 0.4)
+        risk_cluster_count = 0
+        for cid, size in community_sizes.items():
+            fraud_cnt = community_fraud.get(cid, 0)
+            if fraud_cnt > 0 and (fraud_cnt / max(size, 1)) >= high_risk_thresh:
+                risk_cluster_count += 1
+
         logger.info(
-            "Community detection (%s): %d communities found, largest=%d",
-            method, num_communities, sizes[0] if sizes else 0,
+            "Community detection (%s): %d communities, largest=%d, risk_clusters=%d",
+            method, num_communities, sizes[0] if sizes else 0, risk_cluster_count,
         )
 
         return {
@@ -88,6 +131,8 @@ class KGAnalytics:
             "num_communities": num_communities,
             "sizes": sizes,
             "avg_size": float(np.mean(sizes)) if sizes else 0.0,
+            "risk_clusters": risk_cluster_count,
+            "isolated_nodes": len(txn_nodes) - len(partition_set),
         }
 
     def _louvain_communities(self, subgraph: nx.Graph) -> Dict[str, int]:

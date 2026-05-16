@@ -45,6 +45,34 @@ def main():
     parser.add_argument("--kg-config", default="configs/kg_config.yaml", help="KG config path")
     parser.add_argument("--artifacts-dir", default="artifacts", help="Artifacts directory")
     parser.add_argument("--top-k", type=int, default=5, help="Number of top-risk transactions to display")
+
+    # ── Incremental rolling-window arguments ──────────────────────────────
+    parser.add_argument(
+        "--incremental",
+        action="store_true",
+        default=False,
+        help=(
+            "Incremental mode: load existing graph from --graph-state, "
+            "add new transactions from --data, evict old nodes using dual constraint "
+            "(old timestamp AND all SIMILAR_PATTERN neighbors low-risk)."
+        ),
+    )
+    parser.add_argument(
+        "--graph-state",
+        default="artifacts/knowledge_graph/fraud_kg.graphml",
+        help="Path to saved GraphML file. Used as input in --incremental mode and "
+             "overwritten with the updated graph after every run.",
+    )
+    parser.add_argument(
+        "--cutoff-timestamp",
+        type=float,
+        default=None,
+        help=(
+            "Evict transaction nodes with timestamp < this value, PROVIDED their "
+            "SIMILAR_PATTERN neighbors are all low-risk. "
+            "Example: pass the min timestamp of the new batch to evict older data."
+        ),
+    )
     args = parser.parse_args()
 
     start_time = time.time()
@@ -71,32 +99,133 @@ def main():
     if not is_valid:
         logger.warning("Schema validation issues: %s", issues)
 
-    # ---- Step 3: Get risk scores from Prediction Layer ----
-    logger.info("--- Getting risk scores from Prediction Layer ---")
+    # ---- Step 3: Get risk scores and embeddings from Prediction Layer ----
+    logger.info("--- Getting risk scores and embeddings from Prediction Layer ---")
+    embedding_matrix = None
     try:
         predictor = GlobalModelPredictor.from_artifacts(args.artifacts_dir)
         risk_scores = predictor.predict_scores_only(df)
         logger.info("Risk scores: min=%.4f, max=%.4f, mean=%.4f",
                      risk_scores.min(), risk_scores.max(), risk_scores.mean())
+
+        # Extract MLP embeddings for semantically meaningful similarity edges
+        try:
+            import torch
+            import pathlib as _pl
+            from src.data.preprocess import ClientPreprocessor
+            from src.models.tab_transformer import create_model
+
+            _artifacts = _pl.Path(args.artifacts_dir)
+            _prep_path = _artifacts / "preprocessors" / "client_a_preprocessor.pkl"
+            _ckpt_dir  = _artifacts / "global_model"
+
+            # Find the latest round checkpoint
+            _ckpts = sorted(_ckpt_dir.glob("round_*_checkpoint.pt"))
+            if _ckpts and _prep_path.exists():
+                _prep = ClientPreprocessor.load(str(_prep_path))
+                _ckpt = torch.load(str(_ckpts[-1]), map_location="cpu", weights_only=False)
+                _model_cfg = {"hidden_dims": [64, 32], "dropout": 0.2}
+                _model = create_model(input_dim=64, config=_model_cfg, model_type="mlp")
+                _params = _ckpt.get("weights", None)
+                if _params:
+                    _model.set_parameters(_params)
+                _model.eval()
+
+                X_proc, _ = _prep.transform(df)
+                X_tensor = torch.tensor(X_proc, dtype=torch.float32)
+
+                with torch.no_grad():
+                    # Batch-process to avoid OOM on large test sets
+                    emb_parts = []
+                    _bs = 512
+                    for _s in range(0, len(X_tensor), _bs):
+                        emb_parts.append(_model.get_embeddings(X_tensor[_s:_s+_bs]))
+                    embedding_matrix = torch.cat(emb_parts, dim=0).numpy()
+
+                logger.info(
+                    "MLP embeddings extracted: shape=%s (will be used for SIMILAR_PATTERN edges)",
+                    embedding_matrix.shape,
+                )
+            else:
+                logger.warning("No checkpoint or preprocessor found — using raw features for similarity")
+        except Exception as emb_err:
+            logger.warning("Embedding extraction failed (%s) — falling back to raw features", emb_err)
+            embedding_matrix = None
+
     except Exception as e:
         logger.warning("Could not load global model: %s. Using random scores for demo.", e)
         import numpy as np
         np.random.seed(42)
         risk_scores = np.random.beta(0.5, 5, size=len(df))
+        embedding_matrix = None
 
-    # ---- Step 4: Build Knowledge Graph ----
-    logger.info("--- Building Knowledge Graph ---")
+    # ---- Step 4: Build or update the Knowledge Graph ----
     builder = KnowledgeGraphBuilder(schema)
-    graph = builder.build(df)
-    build_stats = builder.get_build_stats()
+
+    if args.incremental:
+        # ── Incremental mode: load existing graph and add new transactions ──
+        graph_state_path = Path(args.graph_state)
+        if graph_state_path.exists():
+            logger.info("--- Incremental mode: loading existing graph from %s ---", graph_state_path)
+            builder = KnowledgeGraphBuilder.load(str(graph_state_path), schema)
+            logger.info(
+                "Loaded graph: %d nodes, %d edges",
+                builder.graph.number_of_nodes(),
+                builder.graph.number_of_edges(),
+            )
+        else:
+            logger.warning(
+                "Graph state file not found at %s — building fresh graph.",
+                graph_state_path,
+            )
+
+        # Determine cutoff timestamp
+        cutoff_ts = args.cutoff_timestamp
+        if cutoff_ts is None and "timestamp" in df.columns:
+            # Default: use min timestamp of the NEW batch as the cutoff.
+            # This evicts transactions older than the earliest transaction
+            # in the current batch, subject to the low-risk-neighbor constraint.
+            cutoff_ts = float(df["timestamp"].min()) if "timestamp" in df.columns else None
+            # Fallback: use the Time column directly
+            if cutoff_ts is None and "Time" in df.columns:
+                cutoff_ts = float(df["Time"].min())
+        elif cutoff_ts is None and "Time" in df.columns:
+            cutoff_ts = float(df["Time"].min())
+
+        logger.info(
+            "--- Incremental add: %d new transactions, cutoff_timestamp=%.1f ---",
+            len(df), cutoff_ts if cutoff_ts is not None else -1,
+        )
+        update_stats = builder.add_transactions(
+            new_df=df,
+            new_embedding_matrix=embedding_matrix,
+            cutoff_timestamp=cutoff_ts,
+        )
+        logger.info("Update stats: %s", update_stats)
+        build_stats = {
+            "mode": "incremental",
+            "update_stats": update_stats,
+            "total_nodes": builder.graph.number_of_nodes(),
+            "total_edges": builder.graph.number_of_edges(),
+            "embeddings_used": embedding_matrix is not None,
+        }
+        graph = builder.graph
+
+    else:
+        # ── Full rebuild mode (default) ─────────────────────────────────────
+        logger.info("--- Full rebuild mode: building Knowledge Graph from scratch ---")
+        graph = builder.build(df, embedding_matrix=embedding_matrix)
+        build_stats = builder.get_build_stats()
+
     logger.info("Build stats: %s", build_stats)
 
     # ---- Step 5: Enrich with risk scores ----
     logger.info("--- Enriching graph with risk scores ---")
     enricher = KGEnricher(schema)
     graph = enricher.attach_predictions(graph, risk_scores, df.index.values)
-    graph = enricher.propagate_risk(graph)
-    graph = enricher.label_risk_tiers(graph)
+    graph = enricher.label_risk_tiers(graph)      # tier first so time window can use it
+    graph = enricher.enrich_time_windows(graph)   # per-window fraud rates vs baseline
+    graph = enricher.propagate_risk(graph)         # SIMILAR_PATTERN BFS only (no hub dilution)
     enrichment_stats = enricher.compute_enrichment_stats(graph)
     logger.info("Enrichment stats: %s", enrichment_stats)
 
@@ -108,8 +237,12 @@ def main():
     risk_clusters = analytics.find_risk_clusters()
     graph_summary = analytics.get_graph_summary()
     logger.info("Graph summary: %s", graph_summary)
-    logger.info("Communities: %d found", community_results["num_communities"])
-    logger.info("Risk clusters: %d found", len(risk_clusters))
+    logger.info(
+        "Communities: %d found, risk_clusters (similarity-based): %d",
+        community_results["num_communities"],
+        community_results.get("risk_clusters", 0),
+    )
+    logger.info("Risk clusters (find_risk_clusters): %d found", len(risk_clusters))
 
     # ---- Step 7: Save artifacts ----
     logger.info("--- Saving artifacts ---")
