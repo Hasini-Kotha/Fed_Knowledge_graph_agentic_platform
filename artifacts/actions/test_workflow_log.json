@@ -1,0 +1,72 @@
+[
+  {
+    "timestamp": "2026-05-17T09:38:40.730522+00:00",
+    "transaction_id": "txn_218",
+    "action": "BLOCK",
+    "confidence": 0.95,
+    "key_factors": [
+      "High risk score (0.9963) indicates a strong likelihood of fraud.",
+      "Transaction is part of a high-risk tier, consistent with fraudulent behavior.",
+      "Model prediction is FRAUD, which aligns with the risk score and tier."
+    ],
+    "tool_used": "block_transaction",
+    "tool_success": true,
+    "tool_message": "Transaction txn_218 blocked successfully"
+  },
+  {
+    "timestamp": "2026-05-17T09:38:40.738833+00:00",
+    "transaction_id": "txn_341",
+    "action": "BLOCK",
+    "confidence": 0.95,
+    "key_factors": [
+      "High risk score (0.9514) exceeds threshold.",
+      "Model prediction is FRAUD, indicating a high likelihood of fraud.",
+      "Similar-pattern peers have an average risk of 0.7428, which is still relatively high."
+    ],
+    "tool_used": "block_transaction",
+    "tool_success": true,
+    "tool_message": "Transaction txn_341 blocked successfully"
+  },
+  {
+    "timestamp": "2026-05-17T09:38:40.759437+00:00",
+    "transaction_id": "txn_517",
+    "action": "BLOCK",
+    "confidence": 0.85,
+    "key_factors": [
+      "High risk score (0.8605) indicates a high likelihood of fraud.",
+      "Model prediction is FRAUD, indicating a strong indication of fraudulent activity.",
+      "Similar-pattern peers have an average risk score of 0.7960, suggesting a moderate level of fraud."
+    ],
+    "tool_used": "block_transaction",
+    "tool_success": true,
+    "tool_message": "Transaction txn_517 blocked successfully"
+  },
+  {
+    "timestamp": "2026-05-17T09:38:40.779403+00:00",
+    "transaction_id": "txn_724",
+    "action": "BLOCK",
+    "confidence": 1.0,
+    "key_factors": [
+      "Risk score: 0.8563, indicating a high-risk transaction",
+      "Model prediction: FRAUD",
+      "Association with a behavioural cluster with an average risk of 0.8563 and a fraud ratio of 100%"
+    ],
+    "tool_used": "block_transaction",
+    "tool_success": true,
+    "tool_message": "Transaction txn_724 blocked successfully"
+  },
+  {
+    "timestamp": "2026-05-17T09:38:40.797971+00:00",
+    "transaction_id": "txn_274",
+    "action": "FLAG",
+    "confidence": 0.9,
+    "key_factors": [
+      "High risk score (0.8047) indicates a high likelihood of fraud.",
+      "Model prediction is FRAUD, which further supports the high-risk assessment.",
+      "Similar-pattern peers with an average risk score of 0.6087 suggest a pattern of suspicious transactions."
+    ],
+    "tool_used": "flag_for_review",
+    "tool_success": true,
+    "tool_message": "Transaction txn_274 queued for analyst review"
+  }
+]

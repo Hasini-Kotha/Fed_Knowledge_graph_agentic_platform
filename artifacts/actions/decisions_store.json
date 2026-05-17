@@ -1,0 +1,187 @@
+[
+  {
+    "id": "dec-5644f6b1",
+    "transactionId": "TX-F40D63CD",
+    "riskScore": 0.5776187181472778,
+    "confidence": 0.8780419590978584,
+    "decision": "FLAG",
+    "timestamp": "2026-05-17T15:52:42.676158+00:00",
+    "merchant": "STARBUCKS",
+    "amount": 200.0,
+    "factors": [
+      {
+        "name": "Velocity (24h)",
+        "contribution": 0.3,
+        "description": "Velocity check: transaction pattern deviates from user baseline"
+      },
+      {
+        "name": "Merchant Category",
+        "contribution": 0.06,
+        "description": "Merchant 'STARBUCKS' has normal risk profile"
+      },
+      {
+        "name": "Transaction Amount",
+        "contribution": 0.04,
+        "description": "Transaction amount within normal range"
+      },
+      {
+        "name": "Location Risk",
+        "contribution": 0.04,
+        "description": "Transaction origin 'US' has normal risk profile"
+      },
+      {
+        "name": "IP Reputation",
+        "contribution": 0.04,
+        "description": "No IP address provided for geolocation check"
+      }
+    ]
+  },
+  {
+    "id": "dec-6aa0c3dc",
+    "transactionId": "TX-83B7895D",
+    "riskScore": 0.6557708978652954,
+    "confidence": 0.9659173702022938,
+    "decision": "FLAG",
+    "timestamp": "2026-05-17T15:52:42.811027+00:00",
+    "merchant": "WESTERN UNION",
+    "amount": 50000.0,
+    "factors": [
+      {
+        "name": "Transaction Amount",
+        "contribution": 0.3398,
+        "description": "Transaction amount exceeds high-value threshold ($10K)"
+      },
+      {
+        "name": "Merchant Category",
+        "contribution": 0.2427,
+        "description": "Merchant 'WESTERN UNION' is in a high-risk category"
+      },
+      {
+        "name": "Location Risk",
+        "contribution": 0.1942,
+        "description": "Transaction origin 'RU' has elevated fraud rate"
+      },
+      {
+        "name": "Velocity (24h)",
+        "contribution": 0.1456,
+        "description": "Velocity check: transaction pattern deviates from user baseline"
+      },
+      {
+        "name": "IP Reputation",
+        "contribution": 0.0777,
+        "description": "Public IP address with no prior transaction history"
+      }
+    ]
+  },
+  {
+    "id": "dec-46cc97a0",
+    "transactionId": "TX-F7C7FF47",
+    "riskScore": 0.5493847727775574,
+    "confidence": 0.9225722727874611,
+    "decision": "FLAG",
+    "timestamp": "2026-05-17T15:52:42.846043+00:00",
+    "merchant": "CRYPTO.COM",
+    "amount": 12500.0,
+    "factors": [
+      {
+        "name": "Transaction Amount",
+        "contribution": 0.3608,
+        "description": "Transaction amount exceeds high-value threshold ($10K)"
+      },
+      {
+        "name": "Merchant Category",
+        "contribution": 0.2577,
+        "description": "Merchant 'CRYPTO.COM' is in a high-risk category"
+      },
+      {
+        "name": "Location Risk",
+        "contribution": 0.2062,
+        "description": "Transaction origin 'HK' has elevated fraud rate"
+      },
+      {
+        "name": "Velocity (24h)",
+        "contribution": 0.1546,
+        "description": "Velocity check: transaction pattern deviates from user baseline"
+      },
+      {
+        "name": "IP Reputation",
+        "contribution": 0.0206,
+        "description": "No IP address provided for geolocation check"
+      }
+    ]
+  },
+  {
+    "id": "dec-edf836e1",
+    "transactionId": "TX-5F9B07E1",
+    "riskScore": 0.5493847727775574,
+    "confidence": 0.8715923636096936,
+    "decision": "FLAG",
+    "timestamp": "2026-05-17T15:56:48.093424+00:00",
+    "merchant": "CRYPTO.COM",
+    "amount": 12500.0,
+    "factors": [
+      {
+        "name": "Transaction Amount",
+        "contribution": 0.3608,
+        "description": "Transaction amount exceeds high-value threshold ($10K)"
+      },
+      {
+        "name": "Merchant Category",
+        "contribution": 0.2577,
+        "description": "Merchant 'CRYPTO.COM' is in a high-risk category"
+      },
+      {
+        "name": "Location Risk",
+        "contribution": 0.2062,
+        "description": "Transaction origin 'HK' has elevated fraud rate"
+      },
+      {
+        "name": "Velocity (24h)",
+        "contribution": 0.1546,
+        "description": "Velocity check: transaction pattern deviates from user baseline"
+      },
+      {
+        "name": "IP Reputation",
+        "contribution": 0.0206,
+        "description": "No IP address provided for geolocation check"
+      }
+    ]
+  },
+  {
+    "id": "dec-de3e8ae7",
+    "transactionId": "TX-84F683DE",
+    "riskScore": 0.5666640400886536,
+    "confidence": 0.9751490638846021,
+    "decision": "FLAG",
+    "timestamp": "2026-05-17T16:06:36.828487+00:00",
+    "merchant": "CRYPTO.COM",
+    "amount": 25000.0,
+    "factors": [
+      {
+        "name": "Transaction Amount",
+        "contribution": 0.3398,
+        "description": "Transaction amount exceeds high-value threshold ($10K)"
+      },
+      {
+        "name": "Merchant Category",
+        "contribution": 0.2427,
+        "description": "Merchant 'CRYPTO.COM' is in a high-risk category"
+      },
+      {
+        "name": "Location Risk",
+        "contribution": 0.1942,
+        "description": "Transaction origin 'HK' has elevated fraud rate"
+      },
+      {
+        "name": "Velocity (24h)",
+        "contribution": 0.1456,
+        "description": "Velocity check: transaction pattern deviates from user baseline"
+      },
+      {
+        "name": "IP Reputation",
+        "contribution": 0.0777,
+        "description": "Public IP address with no prior transaction history"
+      }
+    ]
+  }
+]

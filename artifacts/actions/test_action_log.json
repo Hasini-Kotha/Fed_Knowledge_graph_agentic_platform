@@ -1,0 +1,15 @@
+[
+  {
+    "timestamp": "2026-05-17T09:36:14.335348+00:00",
+    "transaction_id": "txn_218",
+    "action": "BLOCK",
+    "confidence": 0.95,
+    "key_factors": [
+      "High risk score",
+      "4 high-risk neighbours"
+    ],
+    "tool_used": "block_transaction",
+    "tool_success": false,
+    "tool_message": "placeholder"
+  }
+]

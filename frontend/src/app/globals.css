@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+:root {
+  --color-bg: #020617;
+  --color-surface: #0d1526;
+  --color-surface-dim: #0a1220;
+  --color-surface-high: #131d33;
+  --color-surface-highest: #1a2744;
+  --color-border: #1e293b;
+  --color-accent: #06b6d4;
+  --color-accent-glow: rgba(6, 182, 212, 0.25);
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-text: #f1f5f9;
+  --color-text-muted: #94a3b8;
+  --color-outline: #64748b;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background-image:
+    radial-gradient(circle at 15% 50%, rgba(6, 182, 212, 0.05), transparent 25%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.03), transparent 25%);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* Animations */
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 4px var(--color-accent-glow); }
+  50% { box-shadow: 0 0 16px var(--color-accent-glow); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sweep {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100%); }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.animate-fadeIn { animation: fadeIn 0.4s ease-out both; }
+.animate-slideIn { animation: slideIn 0.3s ease-out both; }
+.animate-pulse-glow { animation: pulse-glow 2s infinite; }
+
+/* Glass panel — matches ORION COMMAND design system */
+.glass-panel {
+  background: rgba(13, 21, 38, 0.75);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4), 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: border-color 0.2s ease;
+}
+.glass-panel:hover {
+  border-color: rgba(6, 182, 212, 0.35);
+}
+
+/* Terminal cursor blink */
+@keyframes blink {
+  50% { opacity: 0; }
+}
+.terminal-cursor::after {
+  content: "_";
+  animation: blink 1s infinite;
+}

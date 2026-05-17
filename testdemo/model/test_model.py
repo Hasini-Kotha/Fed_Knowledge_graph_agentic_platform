@@ -1,6 +1,6 @@
 import sys
-sys.path.insert(0, '.')
-sys.path.insert(0, 'src')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import torch
 import numpy as np
