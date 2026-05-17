@@ -39,7 +39,7 @@ def create_mock_checkpoint_if_needed(artifacts_dir: pathlib.Path, model_config: 
         return
         
     logger.warning("No global checkpoints found. Creating a mock checkpoint for evaluation purposes.")
-    from src.models.mlp import create_model
+    from src.models.tab_transformer import create_model
     
     input_dim = 30 # Default for our dataset
     try:
@@ -116,7 +116,15 @@ def main():
     global_model_dir = artifacts_dir / "global_model"
     
     # Step 1 - Load Best Checkpoint
-    best_params, best_metrics, best_round = load_best_checkpoint(str(global_model_dir), metric=metric)
+    best_ckpt = load_best_checkpoint(str(global_model_dir), metric=metric)
+    if best_ckpt is None:
+        logger.error("Failed to load best checkpoint")
+        sys.exit(1)
+        
+    best_params = best_ckpt.get("weights", best_ckpt.get("parameters", []))
+    best_metrics = best_ckpt.get("metrics", {})
+    best_round = best_ckpt.get("round", 0)
+    
     logger.info(f"Best round: {best_round}, {metric}: {best_metrics.get(metric, 0.0):.4f}")
     
     # Step 2 - Evaluate on Global Holdout
@@ -164,12 +172,16 @@ def main():
     # Step 3 - Find Optimal Threshold on Global Test using shared predict_proba()
     import pandas as pd
     from src.data.preprocess import ClientPreprocessor
-    from src.models.mlp import create_model
-    from src.models.train_local import predict_proba
+    from src.models.tab_transformer import create_model
+    from src.models.train_engine import predict_proba
 
     df_test = pd.read_csv(global_test_csv)
     preprocessor = ClientPreprocessor.load(str(preprocessor_path))
     X_test, y_test = preprocessor.transform(df_test)
+
+    if not isinstance(X_test, torch.Tensor):
+        X_test = torch.tensor(X_test, dtype=torch.float32)
+        y_test = torch.tensor(y_test, dtype=torch.float32)
 
     model = create_model(input_dim=preprocessor.get_feature_dim(), config=model_config)
     model.set_parameters(best_params)

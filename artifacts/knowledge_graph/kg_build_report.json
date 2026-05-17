@@ -1,0 +1,157 @@
+{
+  "build_stats": {
+    "total_nodes": 755,
+    "total_edges": 2088,
+    "node_types": {
+      "transaction": 750,
+      "amount_bucket": 5
+    },
+    "edge_types": {
+      "HAS_AMOUNT_BUCKET": 750,
+      "SIMILAR_PATTERN": 1338
+    },
+    "embeddings_used": true
+  },
+  "enrichment_stats": {
+    "total_transactions": 750,
+    "avg_risk_score": 0.5164203654130299,
+    "max_risk_score": 0.9963263869285583,
+    "min_risk_score": 0.30674466490745544,
+    "std_risk_score": 0.08386974452840575,
+    "risk_tiers": {
+      "high": 21,
+      "medium": 693,
+      "low": 36
+    },
+    "avg_neighborhood_risk": 0.41902166489799153
+  },
+  "graph_summary": {
+    "total_nodes": 755,
+    "total_edges": 2088,
+    "transaction_nodes": 750,
+    "derived_nodes": 5,
+    "density": 0.007335710646968925,
+    "connected_components": 1
+  },
+  "community_results": {
+    "method": "louvain",
+    "num_communities": 184,
+    "avg_size": 4.076086956521739,
+    "risk_clusters": 6,
+    "isolated_nodes": 0
+  },
+  "centrality_top_5": [
+    {
+      "id": "txn_435",
+      "centrality": 0.0267022696929239,
+      "risk_score": 0.5393530130386353,
+      "risk_tier": "medium"
+    },
+    {
+      "id": "txn_721",
+      "centrality": 0.0267022696929239,
+      "risk_score": 0.5355074405670166,
+      "risk_tier": "medium"
+    },
+    {
+      "id": "txn_12",
+      "centrality": 0.02403204272363151,
+      "risk_score": 0.5335469245910645,
+      "risk_tier": "medium"
+    },
+    {
+      "id": "txn_706",
+      "centrality": 0.020026702269692925,
+      "risk_score": 0.6001595258712769,
+      "risk_tier": "medium"
+    },
+    {
+      "id": "txn_749",
+      "centrality": 0.018691588785046728,
+      "risk_score": 0.5545992255210876,
+      "risk_tier": "medium"
+    }
+  ],
+  "risk_clusters": [
+    {
+      "community_id": 106,
+      "size": 5,
+      "avg_risk": 0.7845036625862122,
+      "max_risk": 0.9513625502586365,
+      "high_risk_count": 3,
+      "high_risk_ratio": 0.6
+    },
+    {
+      "community_id": 48,
+      "size": 11,
+      "avg_risk": 0.6995940641923384,
+      "max_risk": 0.9963263869285583,
+      "high_risk_count": 6,
+      "high_risk_ratio": 0.5454545454545454
+    },
+    {
+      "community_id": 108,
+      "size": 3,
+      "avg_risk": 0.6774430672327677,
+      "max_risk": 0.7555953860282898,
+      "high_risk_count": 1,
+      "high_risk_ratio": 0.3333333333333333
+    },
+    {
+      "community_id": 58,
+      "size": 10,
+      "avg_risk": 0.6685618996620178,
+      "max_risk": 0.8046560883522034,
+      "high_risk_count": 2,
+      "high_risk_ratio": 0.2
+    },
+    {
+      "community_id": 82,
+      "size": 3,
+      "avg_risk": 0.6615655024846395,
+      "max_risk": 0.6728721261024475,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    {
+      "community_id": 19,
+      "size": 5,
+      "avg_risk": 0.5822440981864929,
+      "max_risk": 0.6485069394111633,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    {
+      "community_id": 3,
+      "size": 32,
+      "avg_risk": 0.563513370230794,
+      "max_risk": 0.7523868680000305,
+      "high_risk_count": 3,
+      "high_risk_ratio": 0.09375
+    },
+    {
+      "community_id": 0,
+      "size": 32,
+      "avg_risk": 0.5508924964815378,
+      "max_risk": 0.6499735713005066,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    {
+      "community_id": 8,
+      "size": 39,
+      "avg_risk": 0.5448090770305731,
+      "max_risk": 0.6953309178352356,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    {
+      "community_id": 12,
+      "size": 23,
+      "avg_risk": 0.5427795415339263,
+      "max_risk": 0.622925877571106,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    }
+  ]
+}

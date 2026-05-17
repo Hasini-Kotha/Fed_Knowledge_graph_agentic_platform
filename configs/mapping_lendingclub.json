@@ -1,0 +1,20 @@
+{
+  "client_id": "lendingclub_bank",
+  "domain": "fintech_credit_risk",
+  "vector_size": 128,
+  "target_column": "loan_status",
+  "feature_mapping": [
+    {"global_index": 0, "local_name": "loan_amnt", "type": "numeric", "impute": "median", "description": "Loan amount requested"},
+    {"global_index": 1, "local_name": "annual_inc", "type": "numeric", "impute": "median", "description": "Annual income of borrower"},
+    {"global_index": 2, "local_name": "int_rate", "type": "numeric", "impute": "median", "description": "Interest rate on loan"},
+    {"global_index": 3, "local_name": "dti", "type": "numeric", "impute": "median", "description": "Debt-to-income ratio"},
+    {"global_index": 4, "local_name": "fico_range_high", "type": "numeric", "impute": "median", "description": "FICO credit score (high end)"},
+    {"global_index": 5, "local_name": "revol_bal", "type": "numeric", "impute": "median", "description": "Total revolving credit balance"},
+    {"global_index": 6, "local_name": "revol_util", "type": "numeric", "impute": "median", "description": "Revolving line utilization rate"},
+    {"global_index": 7, "local_name": "total_acc", "type": "numeric", "impute": "median", "description": "Total number of credit accounts"},
+    {"global_index": 8, "local_name": "term", "type": "categorical", "impute": "mode", "description": "Loan term (36 or 60 months)"},
+    {"global_index": 9, "local_name": "home_ownership", "type": "categorical", "impute": "mode", "description": "Home ownership status"},
+    {"global_index": 10, "local_name": "grade", "type": "categorical", "impute": "mode", "description": "LC assigned loan grade"},
+    {"global_index": 11, "local_name": "emp_length", "type": "numeric", "impute": "median", "description": "Employment length in years"}
+  ]
+}

@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.core.metadata_engine import MetadataMapper, create_default_mapping
 from src.core.vectorizer import DynamicVectorizer
 from src.data.load_data import DataLoader
-from src.data.schema import create_fraud_schema
+from src.data.schema import create_fraud_schema, create_schema_from_mapping
 from src.data.validate import DataValidator
 from src.data.split_clients import ClientSplitter, compute_split_statistics, save_client_splits
 
@@ -43,7 +43,7 @@ def run_data_pipeline(
     """Execute the full data preparation pipeline.
     
     Args:
-        source: Dataset source ('kaggle', 'simulated')
+        source: Dataset source ('kaggle', 'simulated', 'p2p')
         data_dir: Directory containing raw datasets
         mapping_path: Path to mapping.json
         output_dir: Directory for split outputs
@@ -64,25 +64,14 @@ def run_data_pipeline(
     df = loader.load_by_name(source)
     logger.info(f"Loaded: {len(df):,} rows, {len(df.columns)} columns")
     
-    logger.info("--- Phase 2: Validate ---")
-    schema = create_fraud_schema()
-    validator = DataValidator(schema)
-    is_valid, issues = validator.validate(df)
-    logger.info(f"Validation: {'PASSED' if is_valid else 'FAILED'} ({len(issues)} issues)")
-    for issue in issues:
-        logger.info(f"  - {issue}")
-    
-    if not is_valid:
-        logger.error("Validation failed. Aborting pipeline.")
-        return None
-    
-    logger.info("--- Phase 3: Load/Validate Mapping ---")
+    logger.info("--- Phase 2: Load/Validate Mapping ---")
     try:
         mapper = MetadataMapper(mapping_path)
         summary = mapper.summary()
         logger.info(f"Mapping: {summary['client_id']} ({summary['total_features']} features)")
     except Exception as e:
         logger.warning(f"Mapping not found at {mapping_path}, creating default...")
+        schema = create_fraud_schema()
         feature_cols = [c for c in df.columns if c != schema.label_column]
         create_default_mapping(
             client_id="default",
@@ -100,6 +89,18 @@ def run_data_pipeline(
         logger.info("Mapping validation: PASSED")
     else:
         logger.warning(f"Mapping validation issues: {map_issues}")
+    
+    logger.info("--- Phase 3: Validate Data (schema derived from mapping) ---")
+    schema = create_schema_from_mapping(mapping_path)
+    validator = DataValidator(schema)
+    is_valid, issues = validator.validate(df)
+    logger.info(f"Validation: {'PASSED' if is_valid else 'FAILED'} ({len(issues)} issues)")
+    for issue in issues:
+        logger.info(f"  - {issue}")
+    
+    if not is_valid:
+        logger.error("Validation failed. Aborting pipeline.")
+        return None
     
     logger.info("--- Phase 4: Split into Clients ---")
     splitter = ClientSplitter(
@@ -141,10 +142,12 @@ def run_data_pipeline(
     import pandas as pd
     combined_train = pd.concat(all_train_data, ignore_index=True)
     
-    X_tensor, y = vectorizer.fit_transform(combined_train, mapper)
+    result = vectorizer.fit_transform(combined_train, mapper)
+    X_tensor = result["data"]
     logger.info(f"Global vectorizer fitted: input={combined_train.shape}, output={X_tensor.shape}")
     
-    vectorizer_path = f"{artifacts_dir}/global_vectorizer.pkl"
+    source_tag = source.replace("-", "_").replace("/", "_")
+    vectorizer_path = f"{artifacts_dir}/global_vectorizer_{source_tag}.pkl"
     vectorizer.save(vectorizer_path)
     logger.info(f"Global vectorizer saved: {vectorizer_path}")
     

@@ -6,7 +6,7 @@ import flwr as fl
 import torch
 from typing import Dict, Any
 
-from src.models.mlp import create_model
+from src.models.tab_transformer import create_model
 
 def create_server_config(fl_config: Dict[str, Any]) -> fl.server.ServerConfig:
     """

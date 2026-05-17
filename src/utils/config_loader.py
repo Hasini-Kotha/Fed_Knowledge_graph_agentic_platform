@@ -81,3 +81,4 @@ def create_default_config(output_path: str = "src/config/data_config.yaml"):
         yaml.dump(default_config, f, default_flow_style=False, sort_keys=False)
 
     return default_config
+ 

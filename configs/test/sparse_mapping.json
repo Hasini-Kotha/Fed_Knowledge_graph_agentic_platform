@@ -1,0 +1,20 @@
+{
+  "client_id": "sparse_test",
+  "domain": "test",
+  "vector_size": 128,
+  "target_column": "Class",
+  "feature_mapping": [
+    {
+      "global_index": 0,
+      "local_name": "Time",
+      "type": "numeric",
+      "impute": "median"
+    },
+    {
+      "global_index": 50,
+      "local_name": "Amount",
+      "type": "numeric",
+      "impute": "median"
+    }
+  ]
+}

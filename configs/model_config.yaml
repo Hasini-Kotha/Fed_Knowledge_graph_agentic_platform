@@ -1,4 +1,4 @@
-"""Model Configuration."""
+# Model Configuration
 model_type: "mlp"
 input_dim: 128
 hidden_dims: [64, 32]
@@ -6,6 +6,7 @@ dropout: 0.2
 num_classes: 1
 
 scaler_type: "standard"
+vector_size: 64
 
 train:
   epochs: 10

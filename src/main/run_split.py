@@ -3,7 +3,7 @@ import logging
 import json
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.load_data import DataLoader
 from src.data.schema import create_fraud_schema
@@ -32,6 +32,7 @@ def run_split(
     non_iid: bool = False,
     sort_by: str = None,
     prefix: str = "",
+    sample_size: int = None,
 ):
     """Run full client split pipeline.
 
@@ -57,6 +58,21 @@ def run_split(
     schema = create_fraud_schema()
     logger.info(f"Schema: {schema.name}")
     logger.info(f"Label column: {schema.label_column}")
+
+    if sample_size and len(df) > sample_size:
+        import pandas as pd
+        logger.info(f"Stratified sampling {sample_size} rows from {len(df)} rows...")
+        fraud_df = df[df[schema.label_column] == schema.label_positive]
+        legit_df = df[df[schema.label_column] == schema.label_negative]
+        
+        n_fraud = min(len(fraud_df), int(sample_size * (len(fraud_df) / len(df))))
+        n_legit = sample_size - n_fraud
+        
+        df = pd.concat([
+            fraud_df.sample(n=n_fraud, random_state=random_seed),
+            legit_df.sample(n=n_legit, random_state=random_seed)
+        ]).sample(frac=1.0, random_state=random_seed).reset_index(drop=True)
+        logger.info(f"Sampled to {len(df)} rows (Frauds: {n_fraud}, Legit: {n_legit})")
 
     logger.info("-" * 40)
     logger.info("Split parameters:")
@@ -133,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("--non-iid", action="store_true", help="Create non-IID split")
     parser.add_argument("--sort-by", default=None, help="Column to sort by for non-IID")
     parser.add_argument("--prefix", default="", help="Filename prefix")
+    parser.add_argument("--sample-size", type=int, default=None, help="Randomly sample dataset down to this size for fast testing")
 
     args = parser.parse_args()
 
@@ -146,4 +163,6 @@ if __name__ == "__main__":
         args.non_iid,
         args.sort_by,
         args.prefix,
+        args.sample_size,
     )
+ 

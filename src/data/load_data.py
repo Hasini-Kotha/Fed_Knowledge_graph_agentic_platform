@@ -105,7 +105,7 @@ class DataLoader:
         """Load dataset by name shorthand.
 
         Args:
-            name: 'kaggle', 'simulated', or 'simulated_merged'
+            name: 'kaggle', 'simulated', 'simulated_merged', 'p2p', or 'creditcard_2023'
 
         Returns:
             Loaded DataFrame
@@ -116,8 +116,74 @@ class DataLoader:
             return self.load_simulated_fraud()
         elif name.lower() == "simulated_merged":
             return self.load_simulated_fraud(merge=True)
+        elif name.lower() in ["p2p", "p2p_fraud"]:
+            return self.load_p2p_fraud()
+        elif name.lower() in ["creditcard_2023", "credit-card-3"]:
+            return self.load_creditcard_2023()
         else:
             raise ValueError(f"Unknown dataset: {name}")
+
+    def load_p2p_fraud(
+        self,
+        train_file: str = "credit-card-2/fraudTrain.csv",
+        test_file: str = "credit-card-2/fraudTest.csv",
+    ) -> pd.DataFrame:
+        """Load P2P transaction fraud dataset (merged train+test)."""
+        train_path = self.data_dir / train_file
+        test_path = self.data_dir / test_file
+
+        logger.info(f"Loading P2P fraud dataset")
+
+        if not train_path.exists():
+            raise FileNotFoundError(f"Train dataset not found: {train_path}")
+
+        df_train = pd.read_csv(train_path)
+
+        if test_path.exists():
+            df_test = pd.read_csv(test_path)
+            df = pd.concat([df_train, df_test], ignore_index=True)
+            logger.info(f"Merged train+test: {len(df)} rows")
+        else:
+            df = df_train
+            logger.info(f"Loaded train: {len(df)} rows")
+
+        self.loaded_data = df
+        self.dataset_info = {
+            "source": "p2p_fraud",
+            "train_file": train_file,
+            "test_file": test_file if test_path.exists() else None,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_list": list(df.columns),
+        }
+
+        return df
+
+    def load_creditcard_2023(
+        self, filename: str = "credit-card-3/creditcard_2023.csv"
+    ) -> pd.DataFrame:
+        """Load 2023 credit card fraud dataset."""
+        path = self.data_dir / filename
+
+        logger.info(f"Loading creditcard_2023 from {path}")
+
+        if not path.exists():
+            raise FileNotFoundError(f"Dataset not found: {path}")
+
+        df = pd.read_csv(path)
+
+        logger.info(f"Loaded dataset: {len(df)} rows, {len(df.columns)} columns")
+
+        self.loaded_data = df
+        self.dataset_info = {
+            "source": "creditcard_2023",
+            "filename": filename,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_list": list(df.columns),
+        }
+
+        return df
 
     def get_info(self) -> Dict[str, Any]:
         """Get loaded dataset information."""
@@ -282,3 +348,4 @@ def prepare_data_directory(base_dir: str = "data") -> Path:
     logger.info(f"Data directories prepared: {base_path}")
 
     return base_path
+ 

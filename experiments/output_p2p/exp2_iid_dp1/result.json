@@ -1,0 +1,14 @@
+{
+  "experiment": "p2p_iid_dp_sigma1",
+  "dp_enabled": true,
+  "best_round": 4,
+  "best_roc_auc": 0.6886,
+  "best_pr_auc": 0.314,
+  "best_f1": 0.4365,
+  "final_roc_auc": 0.5554,
+  "final_pr_auc": 0.221,
+  "final_f1": 0.3041,
+  "elapsed_s": 37.3,
+  "final_dp_epsilon": 20.1745,
+  "final_dp_delta": 1e-05
+}
