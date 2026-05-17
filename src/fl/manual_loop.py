@@ -58,29 +58,59 @@ def run_manual_simulation(
     Path(artifacts_dir).mkdir(parents=True, exist_ok=True)
 
     client_data = {}
+    input_dim = None
+
+    # Try DynamicVectorizer first (modern path), fall back to ClientPreprocessor (legacy)
+    loaded_as_dynamic = False
+    dv = None
+    mapper = None
+    try:
+        from src.core.vectorizer import DynamicVectorizer
+        from src.core.metadata_engine import MetadataMapper
+        dv = DynamicVectorizer.load(vectorizer_path)
+        mapper = MetadataMapper(mapping_path)
+        loaded_as_dynamic = True
+        logger.info("Loaded DynamicVectorizer (modern path): %s", vectorizer_path)
+    except Exception:
+        logger.info("DynamicVectorizer not available, falling back to legacy ClientPreprocessor path")
+
     for cid in client_ids:
         train_df = pd.read_csv(f"{data_dir}/{cid}_train.csv")
         val_df = pd.read_csv(f"{data_dir}/{cid}_val.csv")
 
-        # Load the preprocessor specific to this client
-        prep_path = Path(vectorizer_path).parent / f"{cid}_preprocessor.pkl"
-        preprocessor = ClientPreprocessor.load(str(prep_path))
+        if loaded_as_dynamic and dv is not None and mapper is not None:
+            result_train = dv.transform(train_df, mapper)
+            X_train = result_train["data"]
+            mask = result_train["mask"]
+            y_train = torch.tensor(train_df[mapper.get_target_column()].values.astype(np.float32))
 
-        X_train, y_train = preprocessor.transform(train_df)
-        X_val, y_val = preprocessor.transform(val_df)
+            result_val = dv.transform(val_df, mapper)
+            X_val = result_val["data"]
+            y_val = torch.tensor(val_df[mapper.get_target_column()].values.astype(np.float32))
 
-        if not isinstance(X_train, torch.Tensor):
-            X_train = torch.tensor(X_train, dtype=torch.float32)
+            if input_dim is None:
+                input_dim = dv.get_feature_dim()
+            padding_mask = mask
+        else:
+            prep_path = Path(vectorizer_path).parent / f"{cid}_preprocessor.pkl"
+            preprocessor = ClientPreprocessor.load(str(prep_path))
+
+            X_train_np, y_train = preprocessor.transform(train_df)
+            X_val_np, y_val = preprocessor.transform(val_df)
+
+            X_train = torch.tensor(X_train_np, dtype=torch.float32)
             y_train = torch.tensor(y_train, dtype=torch.float32)
-            X_val = torch.tensor(X_val, dtype=torch.float32)
+            X_val = torch.tensor(X_val_np, dtype=torch.float32)
             y_val = torch.tensor(y_val, dtype=torch.float32)
 
-        padding_mask = preprocessor.get_padding_mask() if hasattr(preprocessor, "get_padding_mask") else None
-        if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
-            padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
-            
-        if padding_mask is None:
-            padding_mask = torch.ones(preprocessor.get_feature_dim(), dtype=torch.bool)
+            if input_dim is None:
+                input_dim = preprocessor.get_feature_dim()
+
+            padding_mask = preprocessor.get_padding_mask() if hasattr(preprocessor, "get_padding_mask") else None
+            if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
+                padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
+            if padding_mask is None:
+                padding_mask = torch.ones(preprocessor.get_feature_dim(), dtype=torch.bool)
 
         client_data[cid] = {
             'X_train': X_train, 'y_train': y_train,
@@ -90,10 +120,9 @@ def run_manual_simulation(
         }
         logger.info("%s: train=%s, val=%s, active_features=%d/%d",
                    cid, X_train.shape, X_val.shape,
-                   padding_mask.sum().item(), preprocessor.get_feature_dim())
+                   padding_mask.sum().item(), input_dim)
 
     model_type = model_config.get("model_type", "mlp")
-    input_dim = preprocessor.get_feature_dim()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     global_model = create_model(input_dim, model_config, model_type)

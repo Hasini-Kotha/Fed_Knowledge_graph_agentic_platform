@@ -1,0 +1,16 @@
+llm:
+  provider: ollama
+  model: llama3
+  base_url: http://localhost:11434
+  temperature: 0.2
+  max_tokens: 512
+  timeout_seconds: 300
+
+output:
+  dir: artifacts/explanations
+  report_file: explain_report.json
+
+evidence:
+  top_k: 5
+  risk_threshold_high: 0.7
+  risk_threshold_medium: 0.4
