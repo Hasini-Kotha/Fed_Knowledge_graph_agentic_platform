@@ -11,12 +11,14 @@ export default function BatchPage() {
   const [results, setResults] = useState<BatchRow[]>([])
   const [analyzing, setAnalyzing] = useState(false)
   const [fileName, setFileName] = useState("")
+  const [batchError, setBatchError] = useState("")
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     setFileName(file.name)
     setResults([])
+    setBatchError("")
 
     const reader = new FileReader()
     reader.onload = (evt) => {
@@ -24,22 +26,45 @@ export default function BatchPage() {
       const lines = text.split("\n").filter((l) => l.trim())
       if (lines.length < 2) return
 
-      const parsed: { amount: number; merchant: string }[] = []
-      const headers = lines[0].toLowerCase().split(",").map((h) => h.trim())
+      const parsed: Record<string, number | string>[] = []
+      const headers = lines[0].split(",").map((h) => h.trim())
+      const headersLower = headers.map((h) => h.toLowerCase())
 
-      const amountIdx = headers.findIndex(
+      const amountIdx = headersLower.findIndex(
         (h) => h === "amount" || h === "transaction_amount"
       )
-      const merchantIdx = headers.findIndex(
-        (h) => h === "merchant" || h === "merchant_name"
-      )
+
+      // Detect if CSV has V1-V28 feature columns (full ML mode)
+      const featureCols = new Set(["V1","V2","V3","V4","V5","V6","V7","V8","V9","V10",
+                                   "V11","V12","V13","V14","V15","V16","V17","V18","V19","V20",
+                                   "V21","V22","V23","V24","V25","V26","V27","V28","Amount"])
+      const stringCols = new Set(["merchant", "location", "ip", "transaction_id", "id"])
+      const hasFeatures = [...featureCols].every((c) => headers.includes(c))
 
       for (let i = 1; i < lines.length; i++) {
         const cols = lines[i].split(",").map((c) => c.trim())
-        const amount = parseFloat(cols[amountIdx] || "0")
-        const merchant = merchantIdx >= 0 ? cols[merchantIdx] || "UNKNOWN" : "UNKNOWN"
-        if (!isNaN(amount)) {
-          parsed.push({ amount, merchant })
+        if (hasFeatures) {
+          const row: Record<string, number | string> = {}
+          for (let j = 0; j < headers.length; j++) {
+            const key = headers[j]
+            const val = cols[j]
+            if (stringCols.has(key.toLowerCase())) {
+              row[key] = val || "UNKNOWN"
+            } else {
+              const num = parseFloat(val)
+              row[key] = isNaN(num) ? 0 : num
+            }
+          }
+          parsed.push(row)
+        } else if (amountIdx >= 0) {
+          const amount = parseFloat(cols[amountIdx] || "0")
+          if (!isNaN(amount)) {
+            const merchantIdx = headersLower.findIndex(
+              (h) => h === "merchant" || h === "merchant_name"
+            )
+            const merchant = merchantIdx >= 0 ? cols[merchantIdx] || "UNKNOWN" : "UNKNOWN"
+            parsed.push({ amount, merchant } as Record<string, number | string>)
+          }
         }
       }
       setRows(parsed)
@@ -50,11 +75,13 @@ export default function BatchPage() {
   const handleAnalyze = async () => {
     if (!rows.length) return
     setAnalyzing(true)
+    setBatchError("")
     try {
       const res = await api.batchAnalyze(rows)
       setResults(res)
-    } catch (e) {
-      console.error("Batch analysis failed", e)
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Batch analysis failed"
+      setBatchError(msg)
     } finally {
       setAnalyzing(false)
     }
@@ -93,7 +120,17 @@ export default function BatchPage() {
         <p className="text-sm text-[#64748b] mt-0.5">
           Upload a CSV of transactions for bulk analysis
         </p>
+        <p className="text-[10px] text-[#475569] mt-1">
+          Full ML mode: V1..V28, Amount, merchant &nbsp;|&nbsp; Quick mode: amount, merchant
+        </p>
       </div>
+
+      {/* Error */}
+      {batchError && (
+        <div className="glass-panel p-4 border-red-500/30 bg-red-500/5">
+          <p className="text-sm text-red-400">{batchError}</p>
+        </div>
+      )}
 
       {/* Upload Zone */}
       <div className="glass-panel p-6">

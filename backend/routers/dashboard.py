@@ -10,7 +10,9 @@ Response shapes (from types.ts):
     AlertItem:   [{ id, transactionId, riskScore, decision, timestamp, merchant, amount }]
 """
 
+import json
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter
 
@@ -21,26 +23,52 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _get_model_accuracy() -> float:
+    """Read model accuracy from training_history.json last entry."""
+    path = Path("artifacts/global_model/training_history.json")
+    if not path.exists():
+        return 0.0
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        history = data if isinstance(data, list) else data.get("history", data.get("rounds", []))
+        if history:
+            last = history[-1]
+            return last.get("accuracy", 0.0)
+    except Exception as e:
+        logger.warning("Failed to read training_history.json: %s", e)
+    return 0.0
+
+
 @router.get("/api/dashboard/stats", response_model=SystemStats)
 async def dashboard_stats():
     """Dashboard KPI cards + approval breakdown donut.
 
-    Blends live decision data with a realistic baseline so the
-    dashboard always looks populated.
+    All values computed from live data:
+      - Pie breakdown from stored decisions
+      - Fraud rate from blocked / total
+      - Model accuracy from FL training history
     """
-    decisions = get_decisions(limit=1000)
+    decisions = get_decisions(limit=10000)
+    total = len(decisions)
 
-    live_blocked = sum(1 for d in decisions if d.get("decision") == "BLOCK")
-    live_flagged = sum(1 for d in decisions if d.get("decision") == "FLAG")
+    blocked = sum(1 for d in decisions if d.get("decision") == "BLOCK")
+    flagged = sum(1 for d in decisions if d.get("decision") == "FLAG")
+    allowed = total - blocked - flagged
 
-    p_approved, p_flagged, p_blocked = 94.5, 3.1, 2.4
+    fraud_rate = round((blocked / total) * 100, 1) if total > 0 else 0.0
+    p_approved = round((allowed / total) * 100, 1) if total > 0 else 0.0
+    p_flagged = round((flagged / total) * 100, 1) if total > 0 else 0.0
+    p_blocked = round((blocked / total) * 100, 1) if total > 0 else 0.0
+
+    model_acc = _get_model_accuracy()
 
     return SystemStats(
-        totalTransactions=284731,
-        fraudRate=p_blocked,
-        blockedToday=live_blocked,
-        pendingReview=live_flagged if live_flagged > 0 else int(284731 * p_flagged / 100),
-        modelAccuracy=99.8,
+        totalTransactions=total,
+        fraudRate=fraud_rate,
+        blockedToday=blocked,
+        pendingReview=flagged,
+        modelAccuracy=round(model_acc * 100, 1),
         approvalBreakdown=ApprovalBreakdown(
             approvedPercent=p_approved,
             flaggedPercent=p_flagged,
@@ -51,6 +79,6 @@ async def dashboard_stats():
 
 @router.get("/api/dashboard/alerts", response_model=list[AlertItem])
 async def dashboard_alerts():
-    """Return recent alerts (latest 10 decisions)."""
-    decisions = get_decisions(limit=10)
+    """Return top 100 alerts in random order (mixed ALLOW/FLAG/BLOCK)."""
+    decisions = get_decisions(limit=100, shuffle=True)
     return [AlertItem(**d) for d in decisions]

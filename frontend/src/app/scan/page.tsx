@@ -111,10 +111,24 @@ export default function ScanPage() {
         merchant: form.merchant,
       })
       setResult(res)
-    } catch (e) {
-      setError("Analysis failed. Please try again.")
+    } catch (err: unknown) {
+      if (err instanceof Error && err.message.includes("404")) {
+        setError(`Transaction "${form.transactionId}" not found in the system`)
+      } else {
+        setError("Analysis failed. Please try again.")
+      }
     } finally {
       setScanning(false)
+    }
+  }
+
+  const handleOverride = async (decision: string) => {
+    if (!result) return
+    try {
+      const updated = await api.overrideDecision(result.id, decision)
+      setResult(updated)
+    } catch {
+      setError("Override failed. Please try again.")
     }
   }
 
@@ -335,13 +349,13 @@ export default function ScanPage() {
             <span className="text-[10px] text-[#64748b] uppercase tracking-wider mr-auto">
               Override Decision
             </span>
-            <button className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-emerald-500/20 transition-all">
+            <button onClick={() => handleOverride("ALLOW")} className="px-4 py-1.5 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-emerald-500/20 transition-all">
               Allow
             </button>
-            <button className="px-4 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-amber-500/20 transition-all">
+            <button onClick={() => handleOverride("FLAG")} className="px-4 py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-amber-500/20 transition-all">
               Flag
             </button>
-            <button className="px-4 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-red-500/20 transition-all">
+            <button onClick={() => handleOverride("BLOCK")} className="px-4 py-1.5 bg-red-500/10 border border-red-500/30 text-red-400 rounded-md text-xs font-semibold uppercase tracking-wider hover:bg-red-500/20 transition-all">
               Block
             </button>
           </div>

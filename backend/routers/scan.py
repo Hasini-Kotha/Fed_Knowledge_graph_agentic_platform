@@ -36,8 +36,9 @@ from typing import List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
-from backend.decision_store import add_decision
+from backend.decision_store import add_decision, get_by_transaction_id, update_decision
 from backend.models import (
     DecisionResult,
     Factor,
@@ -347,9 +348,40 @@ def _decide(risk_score: float) -> str:
     return "ALLOW"
 
 
+def _stored_to_result(stored: dict) -> TransactionResult:
+    """Rebuild a TransactionResult from a stored DecisionResult dict.
+
+    Graph + rationale are regenerated since they aren't persisted;
+    all numeric scores and factors come from the stored data.
+    """
+    risk = stored["riskScore"]
+    decision = stored["decision"]
+    tx_id = stored["transactionId"]
+    merchant = stored.get("merchant", "Unknown")
+
+    factors = [Factor(**f) for f in stored.get("factors", [])]
+    graph = _generate_kg_graph(tx_id, risk, merchant)
+    rationale = _generate_rationale(risk, decision)
+
+    return TransactionResult(
+        id=tx_id,
+        riskScore=risk,
+        confidence=stored["confidence"],
+        decision=decision,
+        factors=factors,
+        graph=graph,
+        rationale=rationale,
+        timestamp=stored.get("timestamp", datetime.now(timezone.utc).isoformat()),
+    )
+
+
 @router.post("/api/scan", response_model=TransactionResult)
 async def scan_transaction(req: ScanRequest):
     """Run the 5-stage pipeline on a single transaction.
+
+    - If transactionId is provided AND exists in the store → stored result returned
+    - If transactionId is provided AND NOT found → 404 with clear message
+    - If transactionId is NOT provided → run pipeline and persist
 
     Layers executed:
       1. Data:   req → DataFrame → vectorize
@@ -358,11 +390,19 @@ async def scan_transaction(req: ScanRequest):
       4. Explain: extract top risk factors
       5. Agent:  generate rationale + decide
     """
-    # Lazy-load pipeline components
-    _load_pipeline()
-
     # Generate transaction ID
     tx_id = req.transactionId or f"TX-{uuid.uuid4().hex[:8].upper()}"
+
+    # ── Lookup existing transaction ──
+    if req.transactionId:
+        stored = get_by_transaction_id(tx_id)
+        if stored is not None:
+            logger.info("Returning stored result for %s (%s)", tx_id, stored["decision"])
+            return _stored_to_result(stored)
+        raise HTTPException(status_code=404, detail=f"Transaction '{tx_id}' not found in the system")
+
+    # Lazy-load pipeline components
+    _load_pipeline()
 
     # Layer 2: Compute risk score (FL Model)
     risk_score, confidence = _compute_risk_score(
@@ -406,3 +446,31 @@ async def scan_transaction(req: ScanRequest):
         rationale=rationale,
         timestamp=timestamp,
     )
+
+
+class OverrideRequest(BaseModel):
+    transactionId: str
+    decision: str
+
+
+@router.post("/api/scan/override", response_model=TransactionResult)
+async def override_decision(req: OverrideRequest):
+    """Manually override a stored transaction's decision (Allow / Flag / Block).
+
+    Updates the decision in the store and returns the full TransactionResult
+    with the risk score, confidence, and factors unchanged (only the decision
+    and rationale are updated).
+    """
+    if req.decision.upper() not in ("ALLOW", "FLAG", "BLOCK"):
+        raise HTTPException(status_code=400, detail=f"Invalid decision '{req.decision}'")
+
+    stored = get_by_transaction_id(req.transactionId)
+    if stored is None:
+        raise HTTPException(status_code=404, detail=f"Transaction '{req.transactionId}' not found")
+
+    # Update the decision in the store
+    update_decision(req.transactionId, req.decision.upper())
+
+    # Return updated result
+    stored["decision"] = req.decision.upper()
+    return _stored_to_result(stored)

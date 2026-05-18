@@ -35,8 +35,12 @@ export const api = {
     })
   },
 
-  /** POST /api/batch — analyze an array of { amount, merchant } rows. */
-  async batchAnalyze(rows: { amount: number; merchant?: string }[]): Promise<BatchRow[]> {
+  /** POST /api/batch — analyze an array of transaction rows.
+   *
+   * Each row can be { amount, merchant } for quick mode,
+   * or { V1..V28, Amount, merchant } for full ML mode.
+   */
+  async batchAnalyze(rows: Record<string, number | string>[]): Promise<BatchRow[]> {
     return apiFetch("/api/batch", {
       method: "POST",
       body: JSON.stringify(rows),
@@ -69,6 +73,14 @@ export const api = {
   /** GET /api/dashboard/alerts — recent alerts table. */
   async getRecentAlerts(): Promise<Alert[]> {
     return apiFetch("/api/dashboard/alerts")
+  },
+
+  /** POST /api/scan/override — manually change a stored decision. */
+  async overrideDecision(transactionId: string, decision: string): Promise<TransactionResult> {
+    return apiFetch("/api/scan/override", {
+      method: "POST",
+      body: JSON.stringify({ transactionId, decision }),
+    })
   },
 
   /** GET /api/system/fl — FL training status with accuracy history. */

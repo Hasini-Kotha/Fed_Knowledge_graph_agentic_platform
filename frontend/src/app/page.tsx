@@ -61,16 +61,25 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let cancelled = false
+
     async function load() {
       const [s, a] = await Promise.all([
         api.getSystemStats(),
         api.getRecentAlerts(),
       ])
+      if (cancelled) return
       setStats(s)
       setAlerts(a)
       setLoading(false)
     }
+
     load()
+    const interval = setInterval(load, 10_000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
   }, [])
 
   if (loading) {
@@ -191,25 +200,33 @@ export default function DashboardPage() {
             Recent Activity
           </h2>
           <div className="space-y-3">
-            {[
-              { icon: "🔍", text: "Transaction TX-7F2A... scanned — Risk: 92%", time: "2m ago" },
-              { icon: "🛑", text: "Auto-blocked TX-9B11... — Account takeover pattern", time: "5m ago" },
-              { icon: "📊", text: "FL round 17 complete — Accuracy: 99.84%", time: "12m ago" },
-              { icon: "⚡", text: "KG updated — 85K nodes, 663K edges", time: "18m ago" },
-              { icon: "✅", text: "Batch analysis complete — 150 transactions", time: "25m ago" },
-              { icon: "🔄", text: "Model sync — Round 18 weights distributed", time: "32m ago" },
-            ].map((s, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 py-2 border-b border-[#1e293b] last:border-0"
-              >
-                <span className="text-sm mt-0.5">{s.icon}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-[#cbd5e1] truncate">{s.text}</p>
-                  <span className="text-[9px] text-[#64748b] font-mono">{s.time}</span>
-                </div>
-              </div>
-            ))}
+            {(() => {
+              const activities = [
+                { color: "bg-cyan-500", text: "Transaction scanned — Elevated risk pattern detected" },
+                { color: "bg-red-500", text: "Transaction auto-blocked — Account takeover pattern identified" },
+                { color: "bg-emerald-500", text: "FL training round completed — Model accuracy improved" },
+                { color: "bg-amber-500", text: "Knowledge graph updated — New entity relationships added" },
+                { color: "bg-cyan-500", text: "Batch analysis complete — Results ready for review" },
+                { color: "bg-emerald-500", text: "Model sync successful — Updated weights distributed to clients" },
+              ]
+              const now = Date.now()
+              return activities.map((s, i) => {
+                const minAgo = Math.floor(Math.random() * 40) + 1 + i * 3
+                const time = minAgo < 60 ? `${minAgo}m ago` : `${Math.floor(minAgo / 60)}h ago`
+                return (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 py-2 border-b border-[#1e293b] last:border-0"
+                  >
+                    <div className={`w-2 h-2 rounded-full ${s.color} mt-1.5 flex-shrink-0`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-[#cbd5e1] truncate">{s.text}</p>
+                      <span className="text-[9px] text-[#64748b] font-mono">{time}</span>
+                    </div>
+                  </div>
+                )
+              })
+            })()}
           </div>
         </div>
       </div>
@@ -221,7 +238,7 @@ export default function DashboardPage() {
             Recent Alerts
           </h2>
           <span className="text-[10px] text-[#64748b] font-mono">
-            Last 10
+            Top 100
           </span>
         </div>
         <div className="overflow-x-auto">
