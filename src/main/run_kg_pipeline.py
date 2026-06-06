@@ -112,8 +112,7 @@ def main():
         try:
             import torch
             import pathlib as _pl
-            from src.data.preprocess import ClientPreprocessor
-            from src.models.tab_transformer import create_model
+            from src.models.Fed_model import create_model
 
             _artifacts = _pl.Path(args.artifacts_dir)
             _prep_path = _artifacts / "preprocessors" / "client_a_preprocessor.pkl"
@@ -124,8 +123,8 @@ def main():
             if _ckpts and _prep_path.exists():
                 _prep = ClientPreprocessor.load(str(_prep_path))
                 _ckpt = torch.load(str(_ckpts[-1]), map_location="cpu", weights_only=False)
-                _model_cfg = {"hidden_dims": [64, 32], "dropout": 0.2}
-                _model = create_model(input_dim=64, config=_model_cfg, model_type="mlp")
+                _model_cfg = {"hidden_dim": 64, "embedding_dim": 32, "dropout": 0.20}
+                _model = create_model(input_dim=64, config=_model_cfg, model_type="lite_fraud_net")
                 _params = _ckpt.get("weights", None)
                 if _params:
                     _model.set_parameters(_params)

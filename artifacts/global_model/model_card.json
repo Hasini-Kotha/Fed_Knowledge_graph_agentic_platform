@@ -1,19 +1,17 @@
 {
-    "model_type": "TabularMLP",
+    "model_type": "LiteFraudNet",
     "input_dim": 64,
-    "hidden_dims": [
-        64,
-        32
-    ],
-    "trained_rounds": 10,
-    "selected_round": 3,
+    "hidden_dim": 64,
+    "embedding_dim": 32,
+    "trained_rounds": 5,
+    "selected_round": 8,
     "selection_metric": "pr_auc",
-    "global_test_pr_auc": 0.0016835016835016834,
-    "global_test_roc_auc": 0.20827770360480646,
-    "global_test_f1": 0.0,
-    "optimal_threshold": 0.2699999999999999,
-    "dataset": "kaggle",
+    "global_test_pr_auc": 0.760970928517467,
+    "global_test_roc_auc": 0.9747794433118138,
+    "global_test_f1": 0.7724137931034483,
+    "optimal_threshold": 0.7199999999999996,
+    "dataset": "unknown",
     "num_clients": 3,
-    "platform": "Flower FedAvg",
+    "platform": "FedProx + LiteFraudNet",
     "handoff_note": "Ready for Prediction Layer. Load FINAL_global_model.pt with model_card.json for inference."
 }

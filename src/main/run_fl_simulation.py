@@ -1,224 +1,261 @@
-"""
-Main federated learning simulation runner.
-Uses Flower's simulation mode (flwr.simulation.start_simulation) which runs
-multiple clients on one machine with no actual networking needed.
+"""Flower FL Simulation Runner — FedProx + LiteFraudNet.
 
-FL config YAML structure:
-# configs/fl_config.yaml
-# num_rounds: 10
-# fraction_fit: 1.0
-# fraction_evaluate: 1.0
-# min_fit_clients: 3
-# min_evaluate_clients: 3
-# min_available_clients: 3
-# local_epochs: 3
-# batch_size: 256
-# lr: 0.001
-# secure_update:
-#   max_norm: 1.0
-#   noise_multiplier: 0.0
-#   validate: true
+Execution order:
+  1. python src/main/run_data_pipeline.py   ← split data & fit preprocessors
+  2. python src/main/run_fl_simulation.py   ← this script
+  3. python src/main/run_global_eval.py     ← evaluate global model
+
+What this script does:
+  - Pre-loads all client data + preprocessors from disk once.
+  - Wraps each client in a FederatedClient (Flower NumPyClient).
+  - Runs fl.simulation.start_simulation() for N rounds.
+  - FedProxStrategy sends mu to every client each round via configure_fit.
+  - Clients train locally with the proximal term, then send updated weights back.
+  - Server aggregates (weighted average) and saves round checkpoint.
 """
 
 import sys
-import argparse
-import yaml
-import pathlib
 import logging
-import json
-import time
+import yaml
+import torch
+from pathlib import Path
+from typing import Dict, Any
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
 import flwr as fl
+from flwr.common import ndarrays_to_parameters
 
-# Add project root to sys.path
-sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
-
-from src.fl.client import create_client_fn
-from src.fl.strategy import build_strategy
-from src.fl.server import create_server_config, get_initial_parameters
+from src.fl.client import FederatedClient
+from src.fl.server import create_server_config, build_fedprox_strategy
+from src.models.Fed_model import create_model
 from src.data.preprocess import ClientPreprocessor
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
 logger = logging.getLogger(__name__)
+# Suppress redundant default dict dumps at the end of the Flower simulation
+logging.getLogger("flwr").setLevel(logging.WARNING)
 
-def main():
-    parser = argparse.ArgumentParser(description="Run FL simulation.")
-    parser.add_argument("--data_dir", type=str, default="data/splits", help="Directory containing data splits")
-    parser.add_argument("--artifacts_dir", type=str, default="artifacts", help="Directory to save artifacts")
-    parser.add_argument("--num_rounds", type=int, default=None, help="Override number of rounds from config")
-    
-    args = parser.parse_args()
-    data_dir = args.data_dir
-    artifacts_dir = pathlib.Path(args.artifacts_dir)
-    
-    start_time = time.time()
-    
-    # Load Configs
-    model_config_path = pathlib.Path("configs/model_config.yaml")
-    fl_config_path = pathlib.Path("configs/fl_config.yaml")
-    
-    if not model_config_path.exists() or not fl_config_path.exists():
-        logger.error("Config files missing. Please check configs/")
-        sys.exit(1)
-        
-    with open(model_config_path, "r") as f:
-        model_config = yaml.safe_load(f)
-        
-    with open(fl_config_path, "r") as f:
-        fl_config = yaml.safe_load(f)
-        
-    if args.num_rounds is not None:
-        fl_config["num_rounds"] = args.num_rounds
-        
-    # Check if data splits exist
-    split_dir = pathlib.Path(data_dir)
-    required_files = ["client_a_train.csv", "client_b_train.csv", "client_c_train.csv"]
-    missing_files = [f for f in required_files if not (split_dir / f).exists()]
-    
-    if missing_files:
-        logger.warning(f"Data splits missing: {missing_files}")
-        logger.info("Automatically running data preparation pipeline...")
-        try:
-            from src.main.run_data_pipeline import run_pipeline
-            run_pipeline()
-        except ImportError:
-            logger.error("Could not import run_pipeline. Please run 'python src/main/run_data_pipeline.py' manually.")
-            sys.exit(1)
-        except Exception as e:
-            logger.error(f"Data pipeline failed: {e}")
-            sys.exit(1)
-            
-    train_config = {
-        "epochs": fl_config.get("local_epochs", 3),
-        "batch_size": fl_config.get("batch_size", 256),
-        "lr": fl_config.get("lr", 0.001),
-        "eval_batch_size": model_config.get("eval", {}).get("batch_size", 512),
-        "eval_threshold": model_config.get("eval", {}).get("threshold", 0.5),
-        "secure_update": fl_config.get("secure_update", {})
-    }
-    
-    # Step 1 - Validate Preprocessor Artifacts
-    clients = ["client_a", "client_b", "client_c"]
-    preprocessors_dir = artifacts_dir / "preprocessors"
-    
-    for client in clients:
-        if not (preprocessors_dir / f"{client}_preprocessor.pkl").exists():
-            logger.error(f"Run run_single_baseline.py for all 3 clients first (missing {client})")
-            sys.exit(1)
-            
-    # Step 2 - Determine Input Dim
-    client_a_prep = ClientPreprocessor.load(str(preprocessors_dir / "client_a_preprocessor.pkl"))
-    input_dim = client_a_prep.get_feature_dim()
-    logger.info(f"Input dimension: {input_dim}")
-    
-    # Step 3 - Get Initial Parameters
-    initial_parameters = get_initial_parameters(model_config, input_dim)
-    
-    # Step 4 - Build Strategy (initial_parameters passed via __init__, not post-init)
-    strategy = build_strategy(str(artifacts_dir), fl_config, initial_parameters=initial_parameters)
-    
-    # Step 5 - Define client_fn for simulation
-    # Flower simulation uses integer-string CIDs ("0", "1", "2").
-    # Manual fallback uses the same string keys via cid_to_client.
-    cid_to_client = {
-        "0": "client_a",
-        "1": "client_b",
-        "2": "client_c",
-    }
-    simulation_client_ids = list(cid_to_client.keys())  # ["0", "1", "2"]
-    
-    def client_fn(cid: str) -> fl.client.NumPyClient:
-        client_id = cid_to_client[cid]
-        return create_client_fn(
-            client_id=client_id,
-            data_dir=data_dir,
-            artifacts_dir=str(artifacts_dir),
-            model_config=model_config,
-            train_config=train_config
-        )
-        
-    # Step 6 - Run Simulation
-    server_config = create_server_config(fl_config)
-    num_rounds = fl_config.get("num_rounds", 10)
-    
-    logger.info("Starting FL simulation...")
-    try:
-        history = fl.simulation.start_simulation(
-            client_fn=client_fn,
-            num_clients=3,
-            config=server_config,
-            strategy=strategy,
-            client_resources={"num_cpus": 1, "num_gpus": 0.0}
-        )
-    except ImportError as e:
-        if "ray" in str(e).lower():
-            logger.warning("Ray unavailable — falling back to manual Ray-free loop.")
-            from src.fl.manual_loop import run_manual_simulation
-            metrics_history = run_manual_simulation(
-                client_ids=["client_a", "client_b", "client_c"],
-                data_dir=data_dir,
-                mapping_path="configs/mapping.json",
-                vectorizer_path=str(preprocessors_dir / "client_a_preprocessor.pkl"),
-                model_config=model_config,
-                train_config=train_config,
-                fl_config=fl_config,
-                privacy_config=fl_config.get("secure_update") or {},
-                artifacts_dir=str(artifacts_dir / "global_model"),
-                strategy_type=fl_config.get("strategy", "fedprox")
+# ---------------------------------------------------------------------------
+# Client factory
+# ---------------------------------------------------------------------------
+
+def build_client_fn(
+    client_ids: list,
+    data_dir: str,
+    artifacts_dir: str,
+    model_config: Dict[str, Any],
+    train_config: Dict[str, Any],
+    privacy_config: Dict[str, Any],
+):
+    """Pre-load all client data once; return a Flower-compatible client_fn.
+
+    Flower calls client_fn(cid) lazily, where cid is a string "0", "1", …
+    We map cid → client_ids index.
+    """
+    import pandas as pd
+
+    client_data: Dict[str, Dict] = {}
+
+    for idx, cid_name in enumerate(client_ids):
+        train_path = Path(data_dir) / f"{cid_name}_train.csv"
+        val_path   = Path(data_dir) / f"{cid_name}_val.csv"
+        prep_path  = Path(artifacts_dir) / "preprocessors" / f"{cid_name}_preprocessor.pkl"
+
+        if not train_path.exists():
+            raise FileNotFoundError(
+                f"Missing: {train_path}\n"
+                "Run 'python src/main/run_data_pipeline.py' first."
             )
-            strategy.round_metrics_history = metrics_history
-            strategy.save_metrics_history = lambda: None
-        else:
-            raise e
-    except Exception as e:
-        logger.error("Simulation failed (%s) — attempting manual fallback.", e)
-        from src.fl.manual_loop import run_manual_simulation
-        metrics_history = run_manual_simulation(
-            client_ids=["client_a", "client_b", "client_c"],
-            data_dir=data_dir,
-            mapping_path="configs/mapping.json",
-            vectorizer_path=str(preprocessors_dir / "client_a_preprocessor.pkl"),
+        if not prep_path.exists():
+            raise FileNotFoundError(
+                f"Missing: {prep_path}\n"
+                "Run 'python src/main/run_single_baseline.py --client {cid_name}' "
+                "or 'python src/main/run_data_pipeline.py' to create preprocessors."
+            )
+
+        preprocessor = ClientPreprocessor.load(str(prep_path))
+
+        X_train_np, y_train_np = preprocessor.transform(pd.read_csv(train_path))
+        X_val_np,   y_val_np   = preprocessor.transform(pd.read_csv(val_path))
+
+        X_train = torch.tensor(X_train_np, dtype=torch.float32)
+        y_train = torch.tensor(y_train_np, dtype=torch.float32)
+        X_val   = torch.tensor(X_val_np,   dtype=torch.float32)
+        y_val   = torch.tensor(y_val_np,   dtype=torch.float32)
+
+        padding_mask = (
+            preprocessor.get_padding_mask()
+            if hasattr(preprocessor, "get_padding_mask")
+            else None
+        )
+        if padding_mask is not None and not isinstance(padding_mask, torch.Tensor):
+            padding_mask = torch.tensor(padding_mask, dtype=torch.bool)
+
+        client_data[str(idx)] = dict(
+            client_id=cid_name,
+            X_train=X_train, y_train=y_train,
+            X_val=X_val,     y_val=y_val,
+            padding_mask=padding_mask,
+        )
+        logger.info("  %s  train=%s  val=%s", cid_name, X_train.shape, X_val.shape)
+
+    input_dim = client_data["0"]["X_train"].shape[1]
+
+    def client_fn(cid: str) -> fl.client.NumPyClient:
+        d = client_data[cid]
+        return FederatedClient(
+            client_id=d["client_id"],
+            X_train=d["X_train"],   y_train=d["y_train"],
+            X_val=d["X_val"],       y_val=d["y_val"],
             model_config=model_config,
             train_config=train_config,
-            fl_config=fl_config,
-            privacy_config=fl_config.get("secure_update") or {},
-            artifacts_dir=str(artifacts_dir / "global_model"),
-            strategy_type=fl_config.get("strategy", "fedprox")
+            privacy_config=privacy_config,
+            padding_mask=d["padding_mask"],
         )
-        strategy.round_metrics_history = metrics_history
-        strategy.save_metrics_history = lambda: None
-    # Step 7 - Save History
-    strategy.save_metrics_history()
-    
-    # Step 8 - Print Final Summary
-    metrics_history = strategy.round_metrics_history
-    if not metrics_history:
-        logger.warning("No metrics history recorded.")
+
+    return client_fn, input_dim
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+def main():
+    logger.info("=" * 60)
+    logger.info("FLOWER FEDERATED LEARNING — FedProx + LiteFraudNet")
+    logger.info("=" * 60)
+
+    # Load configs
+    model_cfg_path = Path("configs/model_config.yaml")
+    fl_cfg_path    = Path("configs/fl_config.yaml")
+
+    if not model_cfg_path.exists() or not fl_cfg_path.exists():
+        logger.error("Config files missing. Run 'python setup.py' first.")
         sys.exit(1)
-        
-    total_rounds = len(metrics_history)
-    final_round = metrics_history[-1]
+
+    with open(model_cfg_path) as f:
+        model_config = yaml.safe_load(f)
+    with open(fl_cfg_path) as f:
+        fl_config = yaml.safe_load(f)
+
+    # FL hyper-parameters
+    num_rounds   = fl_config.get("num_rounds", 10)
+    num_clients  = fl_config.get("min_clients", 3)
+    fedprox_mu   = fl_config.get("fedprox_mu", 0.01)
+    fraction_fit = fl_config.get("fraction_fit", 1.0)
+
+    artifacts_dir    = "artifacts"
+    data_dir         = "data/splits"
+    global_model_dir = Path(artifacts_dir) / "global_model"
+
+    client_ids     = [f"client_{chr(97 + i)}" for i in range(num_clients)]
+    privacy_config = fl_config.get("secure_update", {"enabled": False})
+
+    train_config = {
+        "epochs":     fl_config.get("local_epochs", 3),
+        "batch_size": fl_config.get("batch_size", 256),
+        "lr":         fl_config.get("lr", 0.001),
+        "mu":         fedprox_mu,   # default; overridden by configure_fit each round
+        "optimizer":  "adamw",
+    }
+
+    logger.info("Rounds=%d | Clients=%d | mu=%.4f", num_rounds, num_clients, fedprox_mu)
+
+    # Pre-load data and get client factory
+    logger.info("Loading client data and preprocessors …")
+    client_fn, input_dim = build_client_fn(
+        client_ids=client_ids,
+        data_dir=data_dir,
+        artifacts_dir=artifacts_dir,
+        model_config=model_config,
+        train_config=train_config,
+        privacy_config=privacy_config,
+    )
+
+    # Initial global model parameters (check if we can resume from a previously saved final model)
+    global_model = create_model(input_dim=input_dim, config=model_config)
+    logger.info("Global model: %s", global_model)
     
-    def get_metric(rd, key):
-        if "metrics" in rd: return rd["metrics"].get(key, 0.0)
-        return rd.get(key, 0.0)
-        
-    best_round = max(metrics_history, key=lambda x: get_metric(x, "pr_auc"))
+    final_model_path = Path(global_model_dir) / "FINAL_global_model.pt"
+    if final_model_path.exists():
+        try:
+            logger.info("Loading existing final model checkpoint to resume training: %s", final_model_path)
+            ckpt = torch.load(str(final_model_path), map_location="cpu", weights_only=False)
+            weights = ckpt.get("weights", ckpt.get("parameters", []))
+            if weights:
+                global_model.set_parameters(weights)
+                logger.info("Successfully resumed global model weights from previous run (Round %d).", ckpt.get("round", 0))
+        except Exception as e:
+            logger.warning("Failed to load FINAL_global_model.pt (%s). Initializing with random weights.", e)
+
+    initial_params = ndarrays_to_parameters(
+        [p.cpu().numpy() for p in global_model.get_parameters()]
+    )
+
+    # FedProx strategy
+    strategy = build_fedprox_strategy(
+        fl_config=fl_config,
+        initial_parameters=initial_params,
+        artifacts_dir=str(global_model_dir)
+    )
+
+    # Run Flower simulation
+    history = fl.simulation.start_simulation(
+        client_fn=client_fn,
+        num_clients=num_clients,
+        config=create_server_config(num_rounds=num_rounds),
+        strategy=strategy,
+    )
+
+    # Format and print history summary round-by-round
+    logger.info("FEDERATED LEARNING HISTORY SUMMARY (Round-by-Round)\n")
     
-    summary = f"""
-    ============================================
-    FL Simulation Completed in {(time.time() - start_time) / 60:.2f} minutes
-    - Total rounds completed: {total_rounds}
-    - Final round ({final_round['round']}) Metrics:
-      ROC-AUC: {get_metric(final_round, 'roc_auc'):.4f}
-      PR-AUC:  {get_metric(final_round, 'pr_auc'):.4f}
-      F1:      {get_metric(final_round, 'f1'):.4f}
-      
-    - Best round by PR-AUC: Round {best_round['round']} with PR-AUC = {get_metric(best_round, 'pr_auc'):.4f}
-    - Global model checkpoints saved to: {artifacts_dir}/global_model/
-    ============================================
-    """
-    print(summary)
-    logger.info("FL simulation completed successfully.")
+    losses = dict(history.losses_distributed)
+    metrics = history.metrics_distributed
+    
+    all_rounds = sorted(losses.keys())
+    for r in all_rounds:
+        loss_val = losses.get(r, 0.0)
+        
+        # Extract metrics for round r
+        roc_auc = 0.0
+        pr_auc = 0.0
+        f1 = 0.0
+        precision = 0.0
+        recall = 0.0
+        accuracy = 0.0
+        
+        for m_name, list_vals in metrics.items():
+            val_dict = dict(list_vals)
+            if r in val_dict:
+                val = val_dict[r]
+                if m_name == "roc_auc":
+                    roc_auc = val
+                elif m_name == "pr_auc":
+                    pr_auc = val
+                elif m_name == "f1":
+                    f1 = val
+                elif m_name == "precision":
+                    precision = val
+                elif m_name == "recall":
+                    recall = val
+                elif m_name == "accuracy":
+                    accuracy = val
+                    
+        logger.info(
+            f"Round {r:02d} -> Loss: {loss_val:.2f} | PR-AUC: {pr_auc:.2f} | ROC-AUC: {roc_auc:.2f} | "
+            f"F1: {f1:.2f} | Precision: {precision:.2f} | Recall: {recall:.2f} | Accuracy: {accuracy:.4f}"
+        )
+
+    logger.info("SIMULATION COMPLETE")
+    logger.info("Checkpoints → %s", global_model_dir)
+    logger.info("Next step  → python src/main/run_global_eval.py --metric pr_auc")
+    return history
+
 
 if __name__ == "__main__":
     main()

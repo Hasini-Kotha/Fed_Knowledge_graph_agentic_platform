@@ -25,53 +25,6 @@ from src.evaluation.metrics import compute_optimal_threshold
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-def create_mock_checkpoint_if_needed(artifacts_dir: pathlib.Path, model_config: dict):
-    """
-    Helper function to create a mock checkpoint if the simulation failed to run
-    (e.g. due to Ray incompatibility on Windows Python 3.13).
-    """
-    global_model_dir = artifacts_dir / "global_model"
-    global_model_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Check if checkpoints already exist
-    checkpoints = list(global_model_dir.glob("round_*_checkpoint.pt"))
-    if checkpoints:
-        return
-        
-    logger.warning("No global checkpoints found. Creating a mock checkpoint for evaluation purposes.")
-    from src.models.tab_transformer import create_model
-    
-    input_dim = 30 # Default for our dataset
-    try:
-        from src.data.preprocess import ClientPreprocessor
-        prep_path = artifacts_dir / "preprocessors" / "client_a_preprocessor.pkl"
-        if prep_path.exists():
-            prep = ClientPreprocessor.load(str(prep_path))
-            input_dim = prep.get_feature_dim()
-    except Exception:
-        pass
-        
-    model = create_model(input_dim=input_dim, config=model_config)
-    
-    mock_metrics = {
-        "roc_auc": 0.95,
-        "pr_auc": 0.85,
-        "precision": 0.80,
-        "recall": 0.90,
-        "f1": 0.847,
-        "participating_clients": 3
-    }
-    
-    ckpt_path = global_model_dir / "round_010_checkpoint.pt"
-    
-    checkpoint = {
-        "round": 10,
-        "parameters": [p.tolist() for p in model.get_parameters()],
-        "metrics": mock_metrics
-    }
-    
-    torch.save(checkpoint, ckpt_path)
-
 def main():
     parser = argparse.ArgumentParser(description="Final Global Model Evaluation.")
     parser.add_argument("--artifacts_dir", type=str, default="artifacts", help="Artifacts directory")
@@ -109,10 +62,6 @@ def main():
             _raw = yaml.safe_load(f)
             data_cfg = _raw.get("data", _raw) if isinstance(_raw, dict) else {}
 
-        
-    # Ensure a checkpoint exists
-    create_mock_checkpoint_if_needed(artifacts_dir, model_config)
-        
     global_model_dir = artifacts_dir / "global_model"
     
     # Step 1 - Load Best Checkpoint
@@ -172,7 +121,7 @@ def main():
     # Step 3 - Find Optimal Threshold on Global Test using shared predict_proba()
     import pandas as pd
     from src.data.preprocess import ClientPreprocessor
-    from src.models.tab_transformer import create_model
+    from src.models.Fed_model import create_model
     from src.models.train_engine import predict_proba
 
     df_test = pd.read_csv(global_test_csv)
@@ -236,16 +185,12 @@ def main():
     
     if best_ckpt_path.exists():
         shutil.copy2(best_ckpt_path, final_model_path)
-    else:
-        # In case we used a mock that wasn't formatted as 03d
-        mock_path = global_model_dir / f"round_010_checkpoint.pt"
-        if mock_path.exists():
-            shutil.copy2(mock_path, final_model_path)
             
     model_card = {
-        "model_type": "TabularMLP",
+        "model_type": "LiteFraudNet",
         "input_dim": preprocessor.get_feature_dim(),
-        "hidden_dims": model_config.get("hidden_dims", [64, 32]),
+        "hidden_dim": model_config.get("hidden_dim", 64),
+        "embedding_dim": model_config.get("embedding_dim", 32),
         "trained_rounds": fl_config.get("num_rounds", 10),
         "selected_round": best_round,
         "selection_metric": metric,
@@ -256,7 +201,7 @@ def main():
         "dataset": data_cfg.get("schema", data_cfg.get("source", "unknown")),
 
         "num_clients": 3,
-        "platform": "Flower FedAvg",
+        "platform": "FedProx + LiteFraudNet",
         "handoff_note": "Ready for Prediction Layer. Load FINAL_global_model.pt with model_card.json for inference."
     }
     

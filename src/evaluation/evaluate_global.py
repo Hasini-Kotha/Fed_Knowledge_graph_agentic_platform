@@ -31,7 +31,7 @@ def load_best_checkpoint(
     best_value = -float("inf")
     
     for ckpt_path in checkpoints:
-        ckpt = torch.load(str(ckpt_path), map_location="cpu")
+        ckpt = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         value = ckpt.get("metrics", {}).get(metric, 0)
         if value > best_value:
             best_value = value
@@ -50,7 +50,7 @@ def evaluate_global_model(
 ):
     import pandas as pd
     from src.data.preprocess import ClientPreprocessor
-    from src.models.tab_transformer import create_model
+    from src.models.Fed_model import create_model
     from src.models.train_engine import evaluate_model
     import torch
     

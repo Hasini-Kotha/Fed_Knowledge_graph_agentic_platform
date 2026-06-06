@@ -1,38 +1,73 @@
-"""
-Server setup utilities for federated simulation.
+"""Federated Learning Server — Flower Server Configuration and Factory.
+
+Encapsulates server-side logic:
+  - Configuration of Flower server settings.
+  - Instantiation of the FedProx Strategy.
+  - Helper to start standalone server or simulation.
 """
 
+import logging
+from typing import Dict, Any, Optional
 import flwr as fl
-import torch
-from typing import Dict, Any
+from src.fl.strategy import FedProxStrategy
 
-from src.models.tab_transformer import create_model
+logger = logging.getLogger(__name__)
 
-def create_server_config(fl_config: Dict[str, Any]) -> fl.server.ServerConfig:
+
+def create_server_config(num_rounds: int) -> fl.server.ServerConfig:
+    """Create a Flower ServerConfig instance.
+
+    Args:
+        num_rounds: Number of federated learning rounds.
     """
-    Creates a Flower ServerConfig based on the provided fl_config dict.
-    """
-    num_rounds = fl_config.get("num_rounds", 10)
     return fl.server.ServerConfig(num_rounds=num_rounds)
 
-def get_initial_parameters(model_config: Dict[str, Any], input_dim: int) -> fl.common.Parameters:
-    """
-    Creates initial model parameters for the server.
-    Ensures all clients start from the exact same random initialization.
-    """
-    model = create_model(input_dim=input_dim, config=model_config)
-    initial_weights = model.get_parameters()
-    return fl.common.ndarrays_to_parameters(initial_weights)
 
-def run_federated_server(strategy, server_config, initial_parameters) -> fl.server.History:
+def build_fedprox_strategy(
+    fl_config: Dict[str, Any],
+    initial_parameters: fl.common.Parameters,
+    artifacts_dir: str = "artifacts/global_model"
+) -> FedProxStrategy:
+    """Build the FedProx strategy with hyperparameters from the configuration.
+
+    Args:
+        fl_config: FL configuration dictionary containing strategy parameters.
+        initial_parameters: Initial model weights serialized as Flower Parameters.
+        artifacts_dir: Directory to save global model checkpoints.
     """
-    Starts the Flower server.
-    Note: In simulation mode (flwr.simulation), this function is NOT used directly.
-    See run_fl_simulation.py for the simulation runner.
-    """
-    history = fl.server.start_server(
-        server_address="0.0.0.0:8080",
-        config=server_config,
-        strategy=strategy,
+    fedprox_mu = fl_config.get("fedprox_mu", 0.01)
+    num_clients = fl_config.get("min_clients", 3)
+    fraction_fit = fl_config.get("fraction_fit", 1.0)
+    fraction_evaluate = fl_config.get("fraction_evaluate", 1.0)
+
+    strategy = FedProxStrategy(
+        mu=fedprox_mu,
+        artifacts_dir=artifacts_dir,
+        fraction_fit=fraction_fit,
+        fraction_evaluate=fraction_evaluate,
+        min_fit_clients=num_clients,
+        min_evaluate_clients=num_clients,
+        min_available_clients=num_clients,
+        initial_parameters=initial_parameters,
     )
-    return history
+    return strategy
+
+
+def run_standalone_server(
+    server_address: str,
+    config: fl.server.ServerConfig,
+    strategy: fl.server.strategy.Strategy
+) -> None:
+    """Start a standalone gRPC Flower server. Useful for real-world deployments.
+
+    Args:
+        server_address: Host and port to listen on (e.g. "[::]:8080").
+        config: Server configuration instance.
+        strategy: Strategy instance to use for aggregation.
+    """
+    logger.info(f"Starting standalone Flower server on {server_address}")
+    fl.server.start_server(
+        server_address=server_address,
+        config=config,
+        strategy=strategy
+    )
