@@ -1,0 +1,57 @@
+{
+  "run_id": "run_1779010769",
+  "source_report": "artifacts\\explanations\\explain_report.json",
+  "total_processed": 5,
+  "summary": {
+    "BLOCK": 4,
+    "FLAG": 1
+  },
+  "failed_count": 0,
+  "actions": [
+    {
+      "transaction_id": "txn_218",
+      "action": "BLOCK",
+      "confidence": 0.95,
+      "tool_used": "block_transaction",
+      "success": true,
+      "message": "Transaction txn_218 blocked successfully",
+      "executed_at": "2026-05-17T09:39:29.496243+00:00"
+    },
+    {
+      "transaction_id": "txn_341",
+      "action": "BLOCK",
+      "confidence": 0.95,
+      "tool_used": "block_transaction",
+      "success": true,
+      "message": "Transaction txn_341 blocked successfully",
+      "executed_at": "2026-05-17T09:39:29.503371+00:00"
+    },
+    {
+      "transaction_id": "txn_517",
+      "action": "BLOCK",
+      "confidence": 0.85,
+      "tool_used": "block_transaction",
+      "success": true,
+      "message": "Transaction txn_517 blocked successfully",
+      "executed_at": "2026-05-17T09:39:29.530179+00:00"
+    },
+    {
+      "transaction_id": "txn_724",
+      "action": "BLOCK",
+      "confidence": 1.0,
+      "tool_used": "block_transaction",
+      "success": true,
+      "message": "Transaction txn_724 blocked successfully",
+      "executed_at": "2026-05-17T09:39:29.551125+00:00"
+    },
+    {
+      "transaction_id": "txn_274",
+      "action": "FLAG",
+      "confidence": 0.9,
+      "tool_used": "flag_for_review",
+      "success": true,
+      "message": "Transaction txn_274 queued for analyst review",
+      "executed_at": "2026-05-17T09:39:29.573835+00:00"
+    }
+  ]
+}

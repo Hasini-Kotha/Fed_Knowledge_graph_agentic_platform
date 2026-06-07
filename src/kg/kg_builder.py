@@ -12,6 +12,7 @@ For the MLG-ULB dataset (anonymized V1–V28), it uses:
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -112,6 +113,7 @@ class KnowledgeGraphBuilder:
         new_df: pd.DataFrame,
         new_embedding_matrix: np.ndarray = None,
         cutoff_timestamp: float = None,
+        max_age_seconds: float = None,
         timestamp_attr: str = "timestamp",
         risk_tier_attr: str = "risk_tier",
         sim_edge_type: str = "SIMILAR_PATTERN",
@@ -133,10 +135,15 @@ class KnowledgeGraphBuilder:
             new_df: DataFrame of new transactions (same schema as original build).
             new_embedding_matrix: Optional (N, D) MLP embedding matrix for new rows.
                 If None, falls back to raw config features for similarity computation.
-            cutoff_timestamp: Transactions with timestamp < this value are eviction
-                candidates. Pass None to skip eviction (add-only mode).
+            cutoff_timestamp: Absolute timestamp cutoff (epoch seconds). Nodes with
+                timestamp < this value are eviction candidates. Used directly when
+                provided. Pass None to use max_age_seconds instead.
+            max_age_seconds: Duration-based eviction (e.g., 172800 for 2 days).
+                Computes cutoff as time.time() - max_age_seconds. Only used when
+                cutoff_timestamp is None. Pass None to skip eviction entirely.
             timestamp_attr: Node attribute name storing the timestamp value.
-                Defaults to "timestamp" (set during _add_primary_nodes).
+                First tries "timestamp" (from data's Time column), then falls back
+                to "_ingested_at" (ingestion time, always available).
             risk_tier_attr: Node attribute name storing the risk tier string.
                 Defaults to "risk_tier" (set by KGEnricher.label_risk_tiers).
             sim_edge_type: Relationship type name for similarity edges.
@@ -152,11 +159,21 @@ class KnowledgeGraphBuilder:
 
         prefix = primary.id_prefix or f"{primary.name}_"
 
+        # ── Step 0: Resolve cutoff timestamp ─────────────────────────────
+        # Priority: explicit cutoff_timestamp > max_age_seconds > no eviction
+        resolved_cutoff = cutoff_timestamp
+        if resolved_cutoff is None and max_age_seconds is not None:
+            resolved_cutoff = time.time() - max_age_seconds
+            logger.info(
+                "Using max_age_seconds=%.0f (cutoff=%.1f, ~%.1f days window)",
+                max_age_seconds, resolved_cutoff, max_age_seconds / 86400,
+            )
+
         # ── Step 1: Collect eviction candidates ───────────────────────────
         evicted_count = 0
         retained_due_to_risk = 0
 
-        if cutoff_timestamp is not None:
+        if resolved_cutoff is not None:
             txn_nodes = [
                 nid for nid, d in self.graph.nodes(data=True)
                 if d.get("entity_type") == primary.name
@@ -164,13 +181,15 @@ class KnowledgeGraphBuilder:
 
             candidates = []
             for nid in txn_nodes:
-                ts = self.graph.nodes[nid].get(timestamp_attr, None)
-                if ts is not None and float(ts) < cutoff_timestamp:
+                # Try real timestamp first (from data's Time column), fall back to ingestion time
+                ts = self.graph.nodes[nid].get(timestamp_attr,
+                       self.graph.nodes[nid].get("_ingested_at", None))
+                if ts is not None and float(ts) < resolved_cutoff:
                     candidates.append(nid)
 
             logger.info(
                 "Eviction candidates (timestamp < %.1f): %d nodes",
-                cutoff_timestamp, len(candidates),
+                resolved_cutoff, len(candidates),
             )
 
             # Apply dual constraint: evict only if node itself AND ALL similar neighbors are low-risk
@@ -533,6 +552,9 @@ class KnowledgeGraphBuilder:
                 "entity_type": entity_type.name,
                 "row_index": int(idx),
             }
+
+            # Add ingestion timestamp for lifecycle management
+            attrs["_ingested_at"] = time.time()
 
             # Add configured attributes
             for attr_def in entity_type.attributes:

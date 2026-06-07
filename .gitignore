@@ -82,4 +82,3 @@ htmlcov/
 *.so
 *.dylib
 *.dll
-artifacts/

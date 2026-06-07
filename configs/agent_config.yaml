@@ -1,0 +1,15 @@
+# Agentic Engine Configuration (Layer 5)
+agent:
+  min_confidence: 0.5              # Below this → downgrade action to FLAG
+  max_auto_block: 10               # Safety cap: max BLOCK actions per run
+  require_confirm_escalation: true # If true, log ESCALATE with HIGH priority
+
+output:
+  dir: artifacts/actions
+  log_file: action_log.json
+
+tools:
+  block_transaction: enabled
+  flag_for_review: enabled
+  escalate: enabled
+  allow_transaction: enabled

@@ -73,6 +73,17 @@ def main():
             "Example: pass the min timestamp of the new batch to evict older data."
         ),
     )
+    parser.add_argument(
+        "--max-age-days",
+        type=float,
+        default=None,
+        help=(
+            "Duration-based eviction window in days. Nodes older than this are "
+            "evicted (subject to low-risk-neighbor constraint). "
+            "Example: --max-age-days 2 evicts transactions ingested > 2 days ago. "
+            "Overrides --cutoff-timestamp when both are provided."
+        ),
+    )
     args = parser.parse_args()
 
     start_time = time.time()
@@ -122,6 +133,7 @@ def main():
             _ckpts = sorted(_ckpt_dir.glob("round_*_checkpoint.pt"))
             if _ckpts and _prep_path.exists():
                 _prep = ClientPreprocessor.load(str(_prep_path))
+                _input_dim = _prep.get_feature_dim()
                 _ckpt = torch.load(str(_ckpts[-1]), map_location="cpu", weights_only=False)
                 _model_cfg = {"hidden_dim": 64, "embedding_dim": 32, "dropout": 0.20}
                 _model = create_model(input_dim=64, config=_model_cfg, model_type="lite_fraud_net")
@@ -192,13 +204,15 @@ def main():
             cutoff_ts = float(df["Time"].min())
 
         logger.info(
-            "--- Incremental add: %d new transactions, cutoff_timestamp=%.1f ---",
-            len(df), cutoff_ts if cutoff_ts is not None else -1,
+            "--- Incremental add: %d new transactions, cutoff_timestamp=%.1f, max_age_days=%s ---",
+            len(df), cutoff_ts if cutoff_ts is not None else -1, args.max_age_days,
         )
+        max_age_seconds = args.max_age_days * 86400 if args.max_age_days else None
         update_stats = builder.add_transactions(
             new_df=df,
             new_embedding_matrix=embedding_matrix,
             cutoff_timestamp=cutoff_ts,
+            max_age_seconds=max_age_seconds,
         )
         logger.info("Update stats: %s", update_stats)
         build_stats = {

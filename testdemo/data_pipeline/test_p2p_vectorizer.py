@@ -1,6 +1,7 @@
 """Test P2P vectorization with fixed non-overlapping mapping."""
 import sys
-sys.path.insert(0, '.')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import pandas as pd
 from src.core.metadata_engine import MetadataMapper
 from src.core.vectorizer import DynamicVectorizer
