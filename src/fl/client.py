@@ -18,7 +18,7 @@ import torch
 
 import flwr as fl
 
-from src.models.tab_transformer import create_model
+from src.models.Fed_model import create_model
 from src.models.train_engine import train_one_round, evaluate_client
 from src.fl.secure_update import protect_update
 

@@ -1,3 +1,5 @@
-"""Models module — TabularMLP and TabularTransformer."""
+"""Models module — LiteFraudNet: lightweight dual-head ResNet for FL + KG."""
 
-from src.models.tab_transformer import TabularTransformer, TabularMLP, create_model
+from src.models.Fed_model import LiteFraudNet, create_model
+
+__all__ = ["LiteFraudNet", "create_model"]

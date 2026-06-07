@@ -34,7 +34,7 @@ import torch
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent.parent))
 
 from src.data.preprocess import ClientPreprocessor
-from src.models.tab_transformer import create_model
+from src.models.Fed_model import create_model
 from src.models.train_engine import train_one_round, evaluate_client, save_local_checkpoint
 from src.evaluation.metrics import print_metrics_report, compute_optimal_threshold
 
@@ -106,8 +106,30 @@ def main():
     input_dim = preprocessor.get_feature_dim()
     model = create_model(input_dim=input_dim, config=config)
     
+    # Load FedProx parameters and check for global model
+    fl_config_path = pathlib.Path("configs/fl_config.yaml")
+    fedprox_mu = 0.0
+    if fl_config_path.exists():
+        with open(fl_config_path, "r") as f:
+            fl_cfg = yaml.safe_load(f)
+            # Default to FedProx if specified in strategy config
+            if fl_cfg.get("strategy", "fedprox") == "fedprox":
+                fedprox_mu = fl_cfg.get("fedprox_mu", 0.01)
+                
+    train_config["mu"] = fedprox_mu
+    
+    global_model_dir = artifacts_dir / "global_model"
+    global_checkpoints = sorted(global_model_dir.glob("round_*_checkpoint.pt"))
+    if global_checkpoints:
+        latest_global = global_checkpoints[-1]
+        logger.info(f"FedProx: Initialising local model with global weights from: {latest_global}")
+        checkpoint = torch.load(latest_global, map_location="cpu", weights_only=False)
+        params = checkpoint.get("parameters", checkpoint.get("weights", None))
+        if params:
+            model.set_parameters(params)
+            
     # Step 4 - Train
-    logger.info("Starting local training...")
+    logger.info(f"Starting local training (FedProx mu={fedprox_mu})...")
     _, train_metrics = train_one_round(model, X_train, y_train, train_config)
     logger.info(f"Training metrics: {train_metrics}")
     
@@ -136,9 +158,10 @@ def main():
     optimal_threshold = compute_optimal_threshold(y_val, probs, metric="f1")
     logger.info(f"Optimal threshold for {client}: {optimal_threshold}")
     
-    # Add optimal threshold to metrics before saving
+    # Add optimal threshold and n_train to metrics before saving
     eval_metrics["optimal_threshold"] = optimal_threshold
-    
+    eval_metrics["n_train"] = len(X_train)   # used by run_aggregation.py for FedProx weighting
+
     # Step 7 - Save Checkpoint
     checkpoint_path = artifacts_dir / "local_models" / f"{client}_baseline.pt"
     save_local_checkpoint(model, preprocessor, eval_metrics, checkpoint_path)

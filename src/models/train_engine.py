@@ -21,13 +21,12 @@ from sklearn.metrics import (
     precision_score, recall_score, confusion_matrix
 )
 
-from src.models.tab_transformer import TabularTransformer, TabularMLP, create_model
+from src.models.Fed_model import create_model
 
 logger = logging.getLogger(__name__)
 
 
 class ClientDataset:
-    """PyTorch Dataset for client data."""
 
     def __init__(self, X: torch.Tensor, y: torch.Tensor):
         self.X = X
@@ -41,7 +40,7 @@ class ClientDataset:
 
 
 class EarlyStopping:
-    """Validation-based early stopping to prevent overfitting."""
+    # Validation-based early stopping
 
     def __init__(self, patience: int = 3, min_delta: float = 1e-4, metric: str = "pr_auc"):
         self.patience = patience
@@ -52,7 +51,7 @@ class EarlyStopping:
         self.best_state = None
 
     def step(self, metric_value: float, model: nn.Module) -> bool:
-        """Return True if training should stop."""
+        # Return True if training should stop
         if metric_value > self.best_value + self.min_delta:
             self.best_value = metric_value
             self.best_state = {k: v.clone() for k, v in model.state_dict().items()}
