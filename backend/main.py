@@ -12,7 +12,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import scan, batch, decisions, dashboard, system
+from backend.routers import scan, batch, decisions, dashboard, system, explain
 
 logging.basicConfig(
     level=logging.INFO,
@@ -38,6 +38,7 @@ app.include_router(batch.router)
 app.include_router(decisions.router)
 app.include_router(dashboard.router)
 app.include_router(system.router)
+app.include_router(explain.router)
 
 
 @app.get("/api/health")

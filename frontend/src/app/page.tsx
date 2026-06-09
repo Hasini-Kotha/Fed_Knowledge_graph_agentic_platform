@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
 } from "lucide-react"
+import ChatbotWidget from "@/components/chatbot-widget"
 import {
   PieChart,
   Pie,
@@ -291,6 +292,7 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
+      <ChatbotWidget />
     </div>
   )
 }
