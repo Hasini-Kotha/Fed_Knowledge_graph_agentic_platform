@@ -183,6 +183,7 @@ async def chat_endpoint(payload: dict):
             query_lower = user_messages[-1]["content"].lower() if user_messages else ""
             trx_signals = ["transak", "transact", "tx", "fraud", "flag", "blok", "block", "allow", "risk", "pattern", "trend", "merchant", "suspicious", "today", "list", "show", "tell", "what", "how", "why", "genaral", "general", "characteristic"]
             if any(s in query_lower for s in trx_signals):
+                factors_formatted = ", ".join(f'"{f}"' for f,_ in top_factors[:3])
                 return {
                     "reply": (
                         f"Based on today's data ({len(all_txns)} transactions total): "
@@ -190,7 +191,7 @@ async def chat_endpoint(payload: dict):
                         f"{len(blocked)} blocked (avg risk {avg_blocked_risk:.0f}%), "
                         f"{len(allowed)} allowed. "
                         f"Top flagged merchants: {', '.join(f'{m} ({c})' for m,c in top_flagged_merchants)}. "
-                        f"Common risk factors: {', '.join(f'\"{f}\"' for f,_ in top_factors[:3])}."
+                        f"Common risk factors: {factors_formatted}."
                     )
                 }
             return {"reply": "I'm not able to help with that. Please ask me about your transactions."}
