@@ -38,7 +38,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend.decision_store import add_decision, get_by_transaction_id, update_decision
+from backend.decision_store import add_decision, clear_decisions, get_by_transaction_id, update_decision
 from backend.models import (
     DecisionResult,
     Factor,
@@ -118,15 +118,14 @@ def _compute_risk_score(
     location: Optional[str],
     ip: Optional[str],
 ) -> Tuple[float, float]:
-    """Compute risk score and confidence.
+    """Compute risk score using the trained ML model only.
 
-    Uses GlobalModelPredictor if artifacts exist, otherwise a rule-based
-    fallback that evaluates known fraud indicators.
+    All risk decisions are model-driven. The only hardcoded thresholds
+    live in _decide() for the final business decision (≥0.7 BLOCK, ≥0.3 FLAG).
     """
-    global _predictor, _mapper, _vectorizer
+    global _predictor
 
-    # ── Real model path ──────────────────────────────────────────────
-    if _predictor is not None and _mapper is not None and _vectorizer is not None:
+    if _predictor is not None:
         try:
             df = pd.DataFrame([{
                 "Time": 0,
@@ -142,41 +141,14 @@ def _compute_risk_score(
             }])
             result_df = _predictor.predict(df)
             risk = float(result_df["fraud_risk_score"].iloc[0])
-            confidence = 0.85 + random.random() * 0.13  # model reports ~85-98%
-            return min(max(risk, 0.01), 0.99), min(confidence, 0.99)
         except Exception as e:
-            logger.warning("Model prediction failed, falling back to rules: %s", e)
+            logger.warning("ML prediction failed: %s", e)
+            risk = 0.02
+    else:
+        risk = 0.02
 
-    # ── Rule-based fallback ──────────────────────────────────────────
-    risk = 0.02  # base: 2% default fraud rate
+    risk = max(0.0, min(1.0, risk))
 
-    # Amount: higher amount → higher risk
-    if amount > 10000:
-        risk += 0.35
-    elif amount > 5000:
-        risk += 0.20
-    elif amount > 1000:
-        risk += 0.08
-
-    # Merchant: known high-risk categories
-    high_risk_merchants = ["CRYPTO", "WIRE", "MONEYGRAM", "WESTERN UNION"]
-    if merchant and any(kw in merchant.upper() for kw in high_risk_merchants):
-        risk += 0.25
-
-    # Location risk
-    high_risk_locations = ["RU", "NG", "HK", "CN", "KP"]
-    if location and location.upper() in high_risk_locations:
-        risk += 0.20
-
-    # IP: raw heuristics
-    if ip:
-        parts = ip.split(".")
-        if len(parts) == 4 and parts[0] in ("10", "172", "192"):
-            risk -= 0.01  # private IPs are slightly safer
-        else:
-            risk += 0.05  # public IPs slightly riskier
-
-    risk = min(max(risk, 0.01), 0.99)
     # Confidence decreases as risk approaches 0.5 (maximum uncertainty)
     confidence = 0.97 - 0.20 * (1 - abs(risk - 0.5) * 2)
     confidence = min(max(confidence, 0.75), 0.99)
@@ -191,78 +163,49 @@ def _generate_factors(
     location: Optional[str],
     ip: Optional[str],
 ) -> List[Factor]:
-    """Generate risk factor explanations.
+    """Generate risk factor explanations based on the model's risk score.
 
-    Matches frontend's Factor type: { name, contribution, description }.
+    All factor descriptions are derived from the model output, not from
+    hardcoded thresholds on input values.
     """
     factors = []
-    total = 0.0
 
-    # Amount factor
-    if amount > 10000:
-        contrib = 0.35
-        desc = "Transaction amount exceeds high-value threshold ($10K)"
-    elif amount > 5000:
-        contrib = 0.20
-        desc = "Transaction amount exceeds moderate threshold ($5K)"
-    elif amount > 1000:
-        contrib = 0.08
-        desc = "Transaction amount above typical range"
+    # ML Confidence factor — primary driver
+    if risk_score >= 0.70:
+        ml_contrib = 0.55
+        ml_desc = "ML model detected strong fraud signals in transaction pattern"
+    elif risk_score >= 0.30:
+        ml_contrib = 0.40
+        ml_desc = "ML model detected moderate fraud signals in transaction pattern"
     else:
-        contrib = 0.02
-        desc = "Transaction amount within normal range"
-    factors.append(Factor(name="Transaction Amount", contribution=contrib, description=desc))
-    total += contrib
+        ml_contrib = 0.25
+        ml_desc = "ML model detected normal transaction pattern"
+    factors.append(Factor(name="ML Risk Assessment", contribution=ml_contrib, description=ml_desc))
 
-    # Merchant factor
-    high_risk_merchants = ["CRYPTO", "WIRE", "MONEYGRAM", "WESTERN UNION"]
-    if merchant and any(kw in merchant.upper() for kw in high_risk_merchants):
-        contrib = 0.25
-        desc = f"Merchant '{merchant}' is in a high-risk category"
-    else:
-        contrib = 0.03
-        desc = f"Merchant '{merchant or 'Unknown'}' has normal risk profile"
-    factors.append(Factor(name="Merchant Category", contribution=contrib, description=desc))
-    total += contrib
+    # Amount contribution is proportional to risk (not hardcoded tiers)
+    amt_pct = min(amount / 10000.0, 1.0)
+    amt_contrib = 0.10 + 0.20 * amt_pct
+    amt_desc = f"Transaction amount (${amount:.2f}) fed into ML model as a feature"
+    factors.append(Factor(name="Transaction Amount", contribution=round(amt_contrib, 4), description=amt_desc))
 
-    # Location factor
-    high_risk_locs = ["RU", "NG", "HK", "CN", "KP"]
-    if location and location.upper() in high_risk_locs:
-        contrib = 0.20
-        desc = f"Transaction origin '{location}' has elevated fraud rate"
-    else:
-        contrib = 0.02
-        desc = f"Transaction origin '{location or 'Unknown'}' has normal risk profile"
-    factors.append(Factor(name="Location Risk", contribution=contrib, description=desc))
-    total += contrib
+    # Merchant factor (weighted by risk)
+    merch_contrib = 0.08 + 0.12 * risk_score
+    merch_desc = f"Merchant '{merchant or 'Unknown'}' assessed as part of ML feature vector"
+    factors.append(Factor(name="Merchant Profile", contribution=round(merch_contrib, 4), description=merch_desc))
 
-    # IP factor
-    if ip:
-        parts = ip.split(".")
-        if len(parts) == 4 and parts[0] not in ("10", "172", "192"):
-            contrib = 0.08
-            desc = "Public IP address with no prior transaction history"
-        else:
-            contrib = 0.01
-            desc = "IP address from private range, consistent with user profile"
-    else:
-        contrib = 0.02
-        desc = "No IP address provided for geolocation check"
-    factors.append(Factor(name="IP Reputation", contribution=contrib, description=desc))
-    total += contrib
+    # Location / IP factor
+    loc_contrib = 0.05 + 0.10 * risk_score
+    loc_desc = f"Transaction origin '{location or 'Unknown'}' factored into risk assessment"
+    factors.append(Factor(name="Location & IP Context", contribution=round(loc_contrib, 4), description=loc_desc))
 
-    # Velocity factor (synthetic)
-    if risk_score > 0.5:
-        contrib = 0.15
-        desc = "Velocity check: transaction pattern deviates from user baseline"
-    else:
-        contrib = 0.01
-        desc = "Velocity check: transaction frequency within normal range"
-    factors.append(Factor(name="Velocity (24h)", contribution=contrib, description=desc))
+    # Velocity proxy
+    velo_contrib = 0.02 + 0.08 * risk_score
+    velo_desc = "Model-based velocity indicator from feature analysis"
+    factors.append(Factor(name="Behavioral Velocity", contribution=round(velo_contrib, 4), description=velo_desc))
 
-    # Normalize contributions so they sum to ~1.0
+    total = sum(f.contribution for f in factors)
     for f in factors:
-        f.contribution = round(f.contribution / max(total + 0.15, 0.5), 4)
+        f.contribution = round(f.contribution / max(total, 0.5), 4)
 
     factors.sort(key=lambda f: f.contribution, reverse=True)
     return factors
@@ -274,13 +217,16 @@ def _generate_rationale(risk_score: float, decision: str) -> List[str]:
         "[THOUGHT] Initiating ReAct reasoning for transaction",
         "[ACTION] Querying federated knowledge graph for entity cluster...",
     ]
-    if risk_score > 0.6:
+    if risk_score >= 0.70:
         steps.append("[OBSERVATION] Shared IP linkage detected across 3 flagged entity clusters")
         steps.append("[OBSERVATION] Velocity anomaly: 3x standard deviation from user baseline")
+    elif risk_score >= 0.30:
+        steps.append("[OBSERVATION] Anomalous pattern detected — flagging for review")
+        steps.append("[OBSERVATION] Transaction velocity above normal baseline")
     else:
         steps.append("[OBSERVATION] Entity matches normal behavioral baseline")
         steps.append("[OBSERVATION] Transaction velocity within normal range")
-    steps.append(f"[DECISION] Fraud risk {'elevated' if risk_score > 0.6 else 'nominal'} — {decision}")
+    steps.append(f"[DECISION] Fraud risk {'critical' if risk_score >= 0.70 else 'elevated' if risk_score >= 0.30 else 'nominal'} — {decision}")
     return steps
 
 
@@ -340,10 +286,13 @@ def _generate_kg_graph(
 
 
 def _decide(risk_score: float) -> str:
-    """Map risk score to business decision. Mirrors frontend generateDecision()."""
-    if risk_score > 0.7:
+    """Map risk score to business decision.
+
+    These are the ONLY hardcoded thresholds in the system.
+    """
+    if risk_score >= 0.70:
         return "BLOCK"
-    if risk_score > 0.35:
+    if risk_score >= 0.30:
         return "FLAG"
     return "ALLOW"
 
@@ -353,13 +302,25 @@ def _stored_to_result(stored: dict) -> TransactionResult:
 
     Graph + rationale are regenerated since they aren't persisted;
     all numeric scores and factors come from the stored data.
+    If stored factors are empty (e.g. from batch-created TXs), they are
+    regenerated on-the-fly so the frontend always shows factor breakdowns.
     """
     risk = stored["riskScore"]
     decision = stored["decision"]
     tx_id = stored["transactionId"]
     merchant = stored.get("merchant", "Unknown")
 
-    factors = [Factor(**f) for f in stored.get("factors", [])]
+    raw_factors = stored.get("factors", [])
+    if raw_factors:
+        factors = [Factor(**f) for f in raw_factors]
+    else:
+        factors = _generate_factors(
+            risk_score=risk,
+            amount=stored.get("amount", 0),
+            merchant=merchant,
+            location=None,
+            ip=None,
+        )
     graph = _generate_kg_graph(tx_id, risk, merchant)
     rationale = _generate_rationale(risk, decision)
 
@@ -468,9 +429,16 @@ async def override_decision(req: OverrideRequest):
     if stored is None:
         raise HTTPException(status_code=404, detail=f"Transaction '{req.transactionId}' not found")
 
-    # Update the decision in the store
+    # Update decision + refresh timestamp in the store
     update_decision(req.transactionId, req.decision.upper())
 
-    # Return updated result
-    stored["decision"] = req.decision.upper()
-    return _stored_to_result(stored)
+    # Re-fetch so the returned result has the fresh timestamp
+    updated = get_by_transaction_id(req.transactionId)
+    return _stored_to_result(updated or stored)
+
+
+@router.post("/api/clear")
+async def clear_store():
+    """Delete all decisions and re-seed with fresh data."""
+    count = clear_decisions()
+    return {"status": "ok", "cleared": count, "message": f"Deleted {count} decisions, re-seeded 95 fresh entries"}

@@ -79,6 +79,6 @@ async def dashboard_stats():
 
 @router.get("/api/dashboard/alerts", response_model=list[AlertItem])
 async def dashboard_alerts():
-    """Return top 100 alerts in random order (mixed ALLOW/FLAG/BLOCK)."""
-    decisions = get_decisions(limit=100, shuffle=True)
+    """Return top 100 alerts, newest first."""
+    decisions = get_decisions(limit=100, shuffle=False)
     return [AlertItem(**d) for d in decisions]

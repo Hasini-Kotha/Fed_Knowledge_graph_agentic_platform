@@ -8,7 +8,13 @@ export function Topbar() {
   useEffect(() => {
     const update = () => {
       const now = new Date()
-      setTime(now.toISOString().replace("T", " ").slice(0, 19) + " UTC")
+      const y = now.getFullYear()
+      const M = String(now.getMonth() + 1).padStart(2, "0")
+      const d = String(now.getDate()).padStart(2, "0")
+      const h = String(now.getHours()).padStart(2, "0")
+      const m = String(now.getMinutes()).padStart(2, "0")
+      const s = String(now.getSeconds()).padStart(2, "0")
+      setTime(`${y}-${M}-${d} ${h}:${m}:${s}`)
     }
     update()
     const id = setInterval(update, 1000)

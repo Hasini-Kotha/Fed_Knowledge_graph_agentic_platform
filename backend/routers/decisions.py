@@ -19,7 +19,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Query
 
 from backend.decision_store import get_decisions
-from backend.models import DecisionResult
+from backend.models import DecisionResult, Factor
+from backend.routers.scan import _generate_factors
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,4 +34,18 @@ async def list_decisions(
 ):
     """Return all decisions with optional filters, newest first."""
     raw = get_decisions(decision_type=type, min_risk=minRisk, limit=limit)
-    return [DecisionResult(**d) for d in raw]
+    results = []
+    for d in raw:
+        factors_raw = d.get("factors", [])
+        if not factors_raw:
+            factors_raw = _generate_factors(
+                risk_score=d["riskScore"],
+                amount=d.get("amount", 0),
+                merchant=d.get("merchant"),
+                location=None,
+                ip=None,
+            )
+            d = dict(d)
+            d["factors"] = [f.model_dump() for f in factors_raw]
+        results.append(DecisionResult(**d))
+    return results

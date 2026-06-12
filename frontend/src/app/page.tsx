@@ -19,6 +19,7 @@ import {
 } from "recharts"
 import { api } from "@/lib/api"
 import type { SystemStats, Alert } from "@/lib/types"
+import { consumePendingOverride } from "@/lib/events"
 
 function statCard(
   label: string,
@@ -61,26 +62,42 @@ export default function DashboardPage() {
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
 
+  async function load() {
+    const [s, a] = await Promise.all([
+      api.getSystemStats(),
+      api.getRecentAlerts(),
+    ])
+    const override = consumePendingOverride()
+    if (override) {
+      const idx = a.findIndex(tx => tx.transactionId === override.transactionId)
+      if (idx >= 0) {
+        a[idx] = { ...a[idx], decision: override.decision as "ALLOW"|"FLAG"|"BLOCK", timestamp: override.timestamp }
+        const [item] = a.splice(idx, 1)
+        a.unshift(item)
+      }
+    }
+    setStats(s)
+    setAlerts(a)
+    setLoading(false)
+  }
+
   useEffect(() => {
     let cancelled = false
-
-    async function load() {
-      const [s, a] = await Promise.all([
-        api.getSystemStats(),
-        api.getRecentAlerts(),
-      ])
+    async function firstLoad() {
+      await load()
       if (cancelled) return
-      setStats(s)
-      setAlerts(a)
-      setLoading(false)
     }
+    firstLoad()
+    const interval = setInterval(() => { if (!cancelled) load() }, 10_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
 
-    load()
-    const interval = setInterval(load, 10_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === "traceai:override") load()
     }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
   }, [])
 
   if (loading) {
@@ -270,7 +287,7 @@ export default function DashboardPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <span className="font-mono text-xs">
-                      {(a.riskScore * 100).toFixed(0)}%
+                      {(a.riskScore * 100).toFixed(2)}%
                     </span>
                   </td>
                   <td className="px-4 py-3 text-center">

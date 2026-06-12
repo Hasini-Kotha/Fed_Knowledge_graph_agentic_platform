@@ -1,20 +1,12 @@
 "use client";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { API_BASE_URL } from "@/lib/config";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
-
-const SUGGESTED = [
-  "Why was TX-3FC57107 blocked?",
-  "Explain the decision on TX-095E7761",
-  "What risk score did TX-EC045C44 get?",
-  "Why was TX-955E7423 allowed?",
-  "Check transaction TX-0DDF7B0A",
-  "What are the flagged neighbors for TX-3FC0F15D?",
-];
 
 export default function ChatbotWidget() {
   const [open, setOpen] = useState(false);
@@ -65,7 +57,7 @@ export default function ChatbotWidget() {
       setLoading(true);
 
       try {
-        const res = await fetch("http://localhost:8000/api/chat", {
+        const res = await fetch(`${API_BASE_URL}/api/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -94,7 +86,7 @@ export default function ChatbotWidget() {
           ...prev,
           {
             role: "assistant",
-            content: `Backend error: ${msg}. Make sure FastAPI is running on port 8000.`,
+            content: `Backend error: ${msg}. Make sure the backend server is running.`,
           },
         ]);
       } finally {
@@ -284,50 +276,6 @@ export default function ChatbotWidget() {
             )}
             <div ref={bottomRef} />
           </div>
-
-          {/* Suggested questions — only show before first user message */}
-          {messages.length === 1 && !loading && (
-            <div
-              style={{
-                padding: "6px 10px 8px",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: "4px",
-                borderTop: "1px solid rgba(255,255,255,0.04)",
-                flexShrink: 0,
-              }}
-            >
-              <div
-                style={{
-                  width: "100%",
-                  fontSize: "10px",
-                  color: "#334155",
-                  marginBottom: "3px",
-                  paddingLeft: "2px",
-                }}
-              >
-                Suggested questions:
-              </div>
-              {SUGGESTED.slice(0, 4).map((q) => (
-                <button
-                  key={q}
-                  onClick={() => send(q)}
-                  style={{
-                    fontSize: "10px",
-                    padding: "3px 8px",
-                    borderRadius: "20px",
-                    border: "1px solid rgba(6,182,212,0.25)",
-                    background: "rgba(6,182,212,0.06)",
-                    color: "#67e8f9",
-                    cursor: "pointer",
-                    transition: "all 0.1s",
-                  }}
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
 
           {/* Input row */}
           <div

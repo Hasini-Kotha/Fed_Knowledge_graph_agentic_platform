@@ -7,7 +7,7 @@ import type { BatchRow } from "@/lib/types"
 
 export default function BatchPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const [rows, setRows] = useState<{ amount: number; merchant: string }[]>([])
+  const [rows, setRows] = useState<Record<string, number | string>[]>([])
   const [results, setResults] = useState<BatchRow[]>([])
   const [analyzing, setAnalyzing] = useState(false)
   const [fileName, setFileName] = useState("")
@@ -235,7 +235,7 @@ export default function BatchPage() {
                       <td className="px-4 py-2.5 font-mono text-xs text-[#94a3b8]">{r.transactionId}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs">${r.amount.toFixed(2)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs">
-                        {(r.riskScore * 100).toFixed(0)}%
+                        {(r.riskScore * 100).toFixed(2)}%
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs">
                         {(r.confidence * 100).toFixed(0)}%

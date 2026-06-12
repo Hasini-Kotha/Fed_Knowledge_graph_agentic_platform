@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Search, Shield, Loader2, Network } from "lucide-react"
 import { api } from "@/lib/api"
 import type { TransactionResult } from "@/lib/types"
+import { dispatchOverride } from "@/lib/events"
 
 const decisionColors: Record<string, { bg: string; text: string }> = {
   ALLOW: { bg: "bg-emerald-500/10", text: "text-emerald-400" },
@@ -69,7 +70,7 @@ function MiniGraph({ graph }: { graph: TransactionResult["graph"] }) {
             <span className="text-[#94a3b8] font-mono text-[10px]">{n.label}</span>
           </div>
           <span className="text-[10px] text-[#64748b] font-mono">
-            {(n.risk * 100).toFixed(0)}%
+            {(n.risk * 100).toFixed(2)}%
           </span>
         </div>
       ))}
@@ -127,6 +128,11 @@ export default function ScanPage() {
     try {
       const updated = await api.overrideDecision(result.id, decision)
       setResult(updated)
+      dispatchOverride({
+        transactionId: result.id,
+        decision,
+        timestamp: updated.timestamp,
+      })
     } catch {
       setError("Override failed. Please try again.")
     }

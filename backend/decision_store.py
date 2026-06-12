@@ -1,6 +1,7 @@
 """Decision store — persists all scan/batch decisions for the audit log.
 
-File: artifacts/actions/decisions_store.json (JSON array)
+Replaced JSON file persistence with SQLite for optimal read/write performance.
+Database: artifacts/actions/decisions.db
 
 Each decision matches the frontend's DecisionResult type:
   { id, transactionId, riskScore, confidence, decision, timestamp, merchant, amount, factors }
@@ -9,6 +10,8 @@ Each decision matches the frontend's DecisionResult type:
 import json
 import logging
 import random
+import sqlite3
+import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +20,51 @@ from typing import List, Optional
 from backend.models import DecisionResult, Factor
 
 logger = logging.getLogger(__name__)
-STORE_PATH = Path("artifacts/actions/decisions_store.json")
+DB_PATH = Path("artifacts/actions/decisions.db")
+_LOCAL = threading.local()
+_INIT_LOCK = threading.Lock()
+_INITIALIZED = False
+
+
+def _get_connection() -> sqlite3.Connection:
+    """Get a thread-local SQLite connection, creating tables if needed."""
+    global _INITIALIZED
+    conn = getattr(_LOCAL, "conn", None)
+    if conn is None:
+        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        _LOCAL.conn = conn
+
+    if not _INITIALIZED:
+        with _INIT_LOCK:
+            if not _INITIALIZED:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS decisions (
+                        id              TEXT PRIMARY KEY,
+                        transaction_id  TEXT NOT NULL UNIQUE,
+                        risk_score      REAL NOT NULL,
+                        confidence      REAL NOT NULL,
+                        decision        TEXT NOT NULL,
+                        timestamp       TEXT NOT NULL,
+                        merchant        TEXT NOT NULL,
+                        amount          REAL NOT NULL,
+                        factors         TEXT NOT NULL DEFAULT '[]'
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_decisions_decision
+                        ON decisions(decision);
+                    CREATE INDEX IF NOT EXISTS idx_decisions_risk_score
+                        ON decisions(risk_score);
+                    CREATE INDEX IF NOT EXISTS idx_decisions_timestamp
+                        ON decisions(timestamp DESC);
+                """)
+                conn.commit()
+                _INITIALIZED = True
+
+    return conn
+
 
 # ─── Realistic seed data generation ────────────────────────────────────
 
@@ -34,13 +81,10 @@ def _seed_mixed_transactions(count: int = 95) -> List[dict]:
     """Generate synthetic transactions with realistic risk distribution.
 
     Distribution target: ~2% BLOCK, ~3% FLAG, ~95% ALLOW
-    Each gets a random amount, merchant, location, and timestamp
-    so the dashboard pie chart + alerts table show diverse data.
     """
     now = datetime.now(timezone.utc)
     entries = []
     for i in range(count):
-        # Roll the decision with realistic probabilities
         r = random.random()
         if r < 0.02:
             decision = "BLOCK"
@@ -51,7 +95,7 @@ def _seed_mixed_transactions(count: int = 95) -> List[dict]:
             location = random.choices(_LOCATIONS, weights=[1]*10 + [3]*6)[0]
         elif r < 0.05:
             decision = "FLAG"
-            risk = round(random.uniform(0.36, 0.70), 4)
+            risk = round(random.uniform(0.30, 0.69), 4)
             confidence = round(random.uniform(0.80, 0.95), 4)
             amount = round(random.uniform(1000, 12000), 2)
             merchant = random.choice(_MERCHANTS)
@@ -61,7 +105,7 @@ def _seed_mixed_transactions(count: int = 95) -> List[dict]:
             risk = round(random.uniform(0.01, 0.20), 4)
             confidence = round(random.uniform(0.93, 0.99), 4)
             amount = round(random.uniform(5, 800), 2)
-            merchant = random.choice(_MERCHANTS[:16])  # avoid high-risk merchants
+            merchant = random.choice(_MERCHANTS[:16])
             location = random.choices(_LOCATIONS, weights=[10]*4 + [1]*12)[0]
 
         timestamp = now.replace(second=0, microsecond=0).isoformat()
@@ -96,72 +140,103 @@ def _seed_mixed_transactions(count: int = 95) -> List[dict]:
 
 # ─── Store operations ──────────────────────────────────────────────────
 
-def _load_all() -> List[dict]:
-    if STORE_PATH.exists():
-        try:
-            with open(STORE_PATH) as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError) as e:
-            logger.warning("Corrupt decision store, resetting: %s", e)
-    return []
-
-
-def _save_all(decisions: List[dict]):
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(STORE_PATH, "w") as f:
-        json.dump(decisions, f, indent=2)
+def _row_to_dict(row: sqlite3.Row) -> dict:
+    """Convert a sqlite3.Row to the DecisionResult dict format."""
+    return {
+        "id": row["id"],
+        "transactionId": row["transaction_id"],
+        "riskScore": row["risk_score"],
+        "confidence": row["confidence"],
+        "decision": row["decision"],
+        "timestamp": row["timestamp"],
+        "merchant": row["merchant"],
+        "amount": row["amount"],
+        "factors": json.loads(row["factors"]),
+    }
 
 
 def ensure_seeded():
-    """Fill the store with synthetic seed data if it has fewer than 5 entries.
-
-    Called once at startup so the dashboard shows mixed ALLOW/FLAG/BLOCK data
-    without requiring the user to manually scan dozens of transactions.
-    """
-    decisions = _load_all()
-    if len(decisions) >= 5:
+    """Fill the store with synthetic seed data if it has fewer than 5 entries."""
+    conn = _get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+    if count >= 5:
         return
-    logger.info("Decision store has %d entries — seeding with %d synthetic transactions", len(decisions), 95)
+
+    logger.info("Decision store has %d entries — seeding with %d synthetic transactions", count, 95)
     seed = _seed_mixed_transactions(95)
-    decisions = seed + decisions
-    _save_all(decisions)
-    logger.info("Seeded %d transactions (BLOCK=%d, FLAG=%d, ALLOW=%d)",
-                95,
-                sum(1 for d in seed if d["decision"] == "BLOCK"),
-                sum(1 for d in seed if d["decision"] == "FLAG"),
-                sum(1 for d in seed if d["decision"] == "ALLOW"))
+
+    rows = []
+    for d in seed:
+        rows.append((
+            d["id"], d["transactionId"], d["riskScore"], d["confidence"],
+            d["decision"], d["timestamp"], d["merchant"], d["amount"],
+            json.dumps([f.model_dump() if isinstance(f, Factor) else f for f in d["factors"]]),
+        ))
+
+    conn.executemany("""
+        INSERT OR IGNORE INTO decisions
+            (id, transaction_id, risk_score, confidence, decision, timestamp, merchant, amount, factors)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, rows)
+    conn.commit()
+
+    blocked = sum(1 for d in seed if d["decision"] == "BLOCK")
+    flagged = sum(1 for d in seed if d["decision"] == "FLAG")
+    allowed = sum(1 for d in seed if d["decision"] == "ALLOW")
+    logger.info("Seeded %d transactions (BLOCK=%d, FLAG=%d, ALLOW=%d)", 95, blocked, flagged, allowed)
 
 
 def add_decision(decision: DecisionResult):
     """Persist a single decision to the store."""
-    decisions = _load_all()
-    decisions.append(decision.model_dump())
-    _save_all(decisions)
+    conn = _get_connection()
+    conn.execute("""
+        INSERT OR REPLACE INTO decisions
+            (id, transaction_id, risk_score, confidence, decision, timestamp, merchant, amount, factors)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        decision.id,
+        decision.transactionId,
+        decision.riskScore,
+        decision.confidence,
+        decision.decision,
+        decision.timestamp,
+        decision.merchant,
+        decision.amount,
+        json.dumps([f.model_dump() for f in decision.factors]),
+    ))
+    conn.commit()
     logger.info("Stored decision %s (%s)", decision.transactionId, decision.decision)
 
 
 def update_decision(transaction_id: str, new_decision: str) -> bool:
     """Override the decision for an existing transaction.
 
+    Also refreshes the timestamp so the transaction surfaces to the top
+    of the recent-alerts list on the dashboard.
+
     Returns True if found and updated, False otherwise.
     """
-    decisions = _load_all()
-    for d in decisions:
-        if d.get("transactionId") == transaction_id:
-            d["decision"] = new_decision
-            _save_all(decisions)
-            logger.info("Overrode decision for %s → %s", transaction_id, new_decision)
-            return True
-    return False
+    conn = _get_connection()
+    now = datetime.now(timezone.utc).isoformat()
+    cursor = conn.execute(
+        "UPDATE decisions SET decision = ?, timestamp = ? WHERE transaction_id = ?",
+        (new_decision, now, transaction_id),
+    )
+    conn.commit()
+    updated = cursor.rowcount > 0
+    if updated:
+        logger.info("Overrode decision for %s → %s", transaction_id, new_decision)
+    return updated
 
 
 def get_by_transaction_id(transaction_id: str) -> Optional[dict]:
     """Look up a stored decision by transactionId."""
-    decisions = _load_all()
-    for d in decisions:
-        if d.get("transactionId") == transaction_id:
-            return d
-    return None
+    conn = _get_connection()
+    row = conn.execute(
+        "SELECT * FROM decisions WHERE transaction_id = ?",
+        (transaction_id,),
+    ).fetchone()
+    return _row_to_dict(row) if row else None
 
 
 def get_decisions(
@@ -170,25 +245,49 @@ def get_decisions(
     limit: int = 100,
     shuffle: bool = False,
 ) -> List[dict]:
-    """Retrieve decisions with optional filters, newest first.
+    """Retrieve decisions with optional filters.
 
     When shuffle=True, results are returned in random order (for the alerts
     table to show a varied mix instead of only the latest type).
     """
-    decisions = _load_all()
+    conn = _get_connection()
+    conditions = []
+    params = []
 
     if decision_type and decision_type != "all":
-        decisions = [d for d in decisions if d.get("decision", "").upper() == decision_type.upper()]
+        conditions.append("decision = ?")
+        params.append(decision_type.upper())
 
     if min_risk is not None:
-        decisions = [d for d in decisions if d.get("riskScore", 0) >= min_risk]
+        conditions.append("risk_score >= ?")
+        params.append(min_risk)
+
+    where = "WHERE " + " AND ".join(conditions) if conditions else ""
 
     if shuffle:
-        random.shuffle(decisions)
+        order = "ORDER BY RANDOM()"
     else:
-        decisions.sort(key=lambda d: d.get("timestamp", ""), reverse=True)
+        order = "ORDER BY timestamp DESC"
 
-    return decisions[:limit]
+    query = f"SELECT * FROM decisions {where} {order} LIMIT ?"
+    params.append(limit)
+
+    rows = conn.execute(query, params).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def clear_decisions() -> int:
+    """Delete all decisions from the store and re-seed. Returns count of deleted rows."""
+    global _INITIALIZED
+    conn = _get_connection()
+    count = conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0]
+    conn.execute("DROP TABLE IF EXISTS decisions")
+    conn.commit()
+    _INITIALIZED = False
+    _get_connection()  # recreates table
+    ensure_seeded()
+    logger.info("Cleared %d decisions and re-seeded", count)
+    return count
 
 
 # ─── Auto-seed on first import ─────────────────────────────────────────

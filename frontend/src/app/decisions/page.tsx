@@ -3,7 +3,9 @@
 import { useEffect, useState } from "react"
 import { Filter, Loader2 } from "lucide-react"
 import { api } from "@/lib/api"
+import { API_BASE_URL } from "@/lib/config"
 import type { Decision } from "@/lib/types"
+import { consumePendingOverride } from "@/lib/events"
 
 const decisionColors: Record<string, string> = {
   ALLOW: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -24,12 +26,39 @@ export default function DecisionsPage() {
     anchor: { top: number; left: number };
   } | null>(null);
 
+  async function load() {
+    const data = await api.getDecisions({ decision: filter, minRisk })
+    const override = consumePendingOverride()
+    if (override) {
+      const idx = data.findIndex(d => d.transactionId === override.transactionId)
+      if (idx >= 0) {
+        data[idx] = { ...data[idx], decision: override.decision as "ALLOW"|"FLAG"|"BLOCK", timestamp: override.timestamp }
+        const [item] = data.splice(idx, 1)
+        data.unshift(item)
+      }
+    }
+    setDecisions(data)
+    setLoading(false)
+  }
+
   useEffect(() => {
-    setLoading(true)
-    api
-      .getDecisions({ decision: filter, minRisk })
-      .then(setDecisions)
-      .finally(() => setLoading(false))
+    let cancelled = false
+    async function firstLoad() {
+      setLoading(true)
+      await load()
+      if (cancelled) return
+    }
+    firstLoad()
+    const interval = setInterval(() => { if (!cancelled) load() }, 10_000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [filter, minRisk])
+
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === "traceai:override") load()
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
   }, [filter, minRisk])
 
   const detail = detailId ? decisions.find((d) => d.id === detailId) : null
@@ -68,7 +97,7 @@ export default function DecisionsPage() {
 
     try {
       const res = await fetch(
-        "http://localhost:8000/api/explain-transaction",
+        `${API_BASE_URL}/api/explain-transaction`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -94,7 +123,7 @@ export default function DecisionsPage() {
       );
     } catch {
       // Fallback explanation using real transaction values
-      const riskPct = Math.round(riskScore * 100);
+      const riskPct = (riskScore * 100).toFixed(2);
       const fallback =
         isFraud
           ? `${txn.transactionId} at ${txn.merchant} — risk ${riskPct}%, ${txn.decision}. Factors: ${(txn.factors ?? []).map((f: { name: string }) => f.name).join(", ") || "none"}. ${neighborsFlagged} flagged peers in a ${communityLabel}.`
@@ -195,7 +224,7 @@ export default function DecisionsPage() {
                         ${d.amount.toLocaleString()}
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-xs">
-                        {(d.riskScore * 100).toFixed(0)}%
+                        {(d.riskScore * 100).toFixed(2)}%
                       </td>
                       <td className="px-4 py-3 text-center">
                         <span
@@ -230,7 +259,7 @@ export default function DecisionsPage() {
                         </button>
                       </td>
                       <td className="px-4 py-3 text-right font-mono text-[10px] text-[#64748b]">
-                        {new Date(d.timestamp).toLocaleDateString()}
+                        {new Date(d.timestamp).toLocaleString()}
                       </td>
                     </tr>
                   ))}

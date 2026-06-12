@@ -8,11 +8,13 @@ Frontend config (frontend/src/lib/config.ts):
 """
 
 import logging
+import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routers import scan, batch, decisions, dashboard, system, explain
+from backend.decision_store import DB_PATH
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,3 +46,32 @@ app.include_router(explain.router)
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "service": "traceai-backend"}
+
+
+@app.get("/api/debug/db-path")
+async def debug_db_path():
+    return {
+        "cwd": os.getcwd(),
+        "db_path": str(DB_PATH),
+        "db_abs": str(DB_PATH.resolve()),
+        "db_exists": DB_PATH.exists(),
+    }
+
+
+@app.get("/api/debug/predictor")
+async def debug_predictor():
+    import backend.routers.scan as scan_mod
+    info = {"predictor_loaded": scan_mod._predictor is not None}
+    if scan_mod._predictor is None:
+        try:
+            scan_mod._load_pipeline()
+            info["after_load"] = scan_mod._predictor is not None
+            if scan_mod._predictor is not None:
+                info["summary"] = scan_mod._predictor.get_summary()
+        except Exception as e:
+            info["error"] = str(e)
+            import traceback
+            info["traceback"] = traceback.format_exc()
+    else:
+        info["summary"] = scan_mod._predictor.get_summary()
+    return info
