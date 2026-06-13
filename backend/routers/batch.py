@@ -11,7 +11,7 @@ from typing import List
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from backend.decision_store import add_decision
 from backend.models import BatchRowResult, DecisionResult
@@ -76,8 +76,10 @@ def _batch_predict_ml(rows: List[dict]) -> List[BatchRowResult]:
     """
     predictor = _scan_module._predictor
     if predictor is None:
-        logger.error("ML predictor not loaded — cannot score batch")
-        return _empty_results(rows)
+        raise HTTPException(
+            status_code=503,
+            detail="The latest LiteFraudNet global model is not loaded. Please verify that a model checkpoint exists in the registry."
+        )
 
     records = []
     for row in rows:
@@ -162,5 +164,7 @@ async def batch_analyze(rows: List[dict]):
         logger.info("Batch: using ML model (%d rows)", len(rows))
         return _batch_predict_ml(rows)
 
-    logger.warning("Batch: ML predictor not loaded, returning safe defaults (%d rows)", len(rows))
-    return _empty_results(rows)
+    raise HTTPException(
+        status_code=503,
+        detail="The latest LiteFraudNet global model is not loaded. Please verify that a model checkpoint exists in the registry."
+    )

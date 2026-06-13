@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { getVerifiedClaims } from "@/components/sidebar"
 import {
   TrendingUp,
   ShieldBan,
@@ -59,10 +61,21 @@ function statCard(
 const COLORS = ["#10b981", "#f59e0b", "#ef4444"]
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [stats, setStats] = useState<SystemStats | null>(null)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
+
+  // Redirect guard
+  useEffect(() => {
+    const claims = getVerifiedClaims()
+    if (!claims) {
+      router.push("/login")
+    } else if (claims.role === "admin") {
+      router.push("/admin")
+    }
+  }, [router])
 
   async function load() {
     const [s, a] = await Promise.all([

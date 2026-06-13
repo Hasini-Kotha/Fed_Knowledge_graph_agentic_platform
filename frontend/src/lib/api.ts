@@ -10,9 +10,18 @@ import type {
 
 // ─── Fetch helper ─────────────────────────────────────────────────────
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`
+  }
+
   const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: {
+      ...headers,
+      ...(options?.headers as Record<string, string>),
+    },
   })
   if (!res.ok) throw new Error(`Backend error: ${res.status} ${res.statusText}`)
   return res.json()

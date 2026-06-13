@@ -72,7 +72,7 @@ export default function LoginPage() {
         </div>
         <h1 className="text-2xl font-bold text-slate-100 tracking-tight">TraceAI Console</h1>
         <p className="text-sm text-slate-400">
-          Enter partner credentials to access secure FL gateway
+          Enter Client or Admin credentials to access the console
         </p>
       </div>
 
@@ -128,7 +128,7 @@ export default function LoginPage() {
             <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
           ) : (
             <>
-              Access Gateway
+              Access Console
               <ArrowRight className="w-4 h-4" />
             </>
           )}

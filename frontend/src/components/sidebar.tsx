@@ -15,7 +15,9 @@ import {
   Users,
   Database,
   Terminal,
-  Activity
+  Activity,
+  Search,
+  Upload
 } from "lucide-react"
 
 // Pure JS JWT decoder
@@ -57,9 +59,13 @@ export function getVerifiedClaims(): any {
 
 export function Sidebar() {
   const pathname = usePathname()
-  const isAdminPath = pathname.startsWith("/admin")
+  const isLoginPage = pathname === "/login"
+  if (isLoginPage) return null
 
-  if (isAdminPath) {
+  const claims = getVerifiedClaims()
+  const role = claims?.role
+
+  if (role === "admin") {
     return <AdminSidebar />
   }
   return <ClientSidebar />
@@ -214,15 +220,15 @@ function ClientSidebar() {
 
   const baseNavItems = [
     { href: "/", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/scan", label: "Scan", icon: Search },
+    { href: "/batch", label: "Batch Analysis", icon: Upload },
+    { href: "/federated-learning", label: "Federated Learning", icon: Cpu },
     { href: "/decisions", label: "Decisions", icon: FileText },
     { href: "/system", label: "System", icon: Settings2 },
     { href: "/guide", label: "User Guide", icon: BookOpen },
   ]
 
   const navItems = [...baseNavItems]
-  if (role === "fl_client") {
-    navItems.push({ href: "/federated-learning", label: "Federated Learning", icon: Cpu })
-  }
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-56 bg-[#0d1526] border-r border-[#1e293b] flex flex-col z-50">
@@ -258,11 +264,11 @@ function ClientSidebar() {
 
       {/* Profile & Logout */}
       <div className="px-3 py-3 border-t border-[#1e293b] space-y-2">
-        {role ? (
+        {role && (
           <div className="bg-[#0f1b35] p-2.5 rounded-md border border-[#1e293b] space-y-2">
             <div className="flex flex-col">
               <span className="text-[10px] text-cyan-400 font-mono uppercase tracking-wider font-semibold">
-                Partner Node
+                Client Node
               </span>
               <span className="text-xs text-[#e2e8f0] font-medium truncate">
                 {clientName}
@@ -276,14 +282,6 @@ function ClientSidebar() {
               Logout
             </button>
           </div>
-        ) : (
-          <Link
-            href="/login"
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs font-semibold transition-colors duration-150 border border-cyan-500/20"
-          >
-            <LogIn size={14} />
-            Partner Login
-          </Link>
         )}
 
         <div className="pt-2 px-2 flex items-center justify-between border-t border-[#1e293b]/50">

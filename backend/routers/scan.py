@@ -58,10 +58,13 @@ _kg_query = None
 _mapper = None
 _vectorizer = None
 
+_loaded_model_checkpoint = None
+_loaded_kg_mtime = None
+
 
 def _load_pipeline():
-    """Lazy-load pipeline components from artifacts on first request."""
-    global _predictor, _kg_query, _mapper, _vectorizer
+    """Lazy-load or hot-reload pipeline components when files change on disk."""
+    global _predictor, _kg_query, _mapper, _vectorizer, _loaded_model_checkpoint, _loaded_kg_mtime
 
     artifacts = Path("artifacts")
 
@@ -85,20 +88,35 @@ def _load_pipeline():
             except Exception as e:
                 logger.warning("DynamicVectorizer load failed: %s", e)
 
-    # --- Load GlobalModelPredictor ---
-    if _predictor is None:
+    # --- Check for Latest Global Model Checkpoint ---
+    final_model_path = artifacts / "global_model" / "FINAL_global_model.pt"
+    checkpoint_files = sorted(
+        (artifacts / "global_model").glob("round_*_checkpoint.pt")
+    )
+    latest_cp_key = ""
+    if final_model_path.exists():
+        latest_cp_key = f"final_{final_model_path.stat().st_mtime}"
+    elif checkpoint_files:
+        latest_cp_key = f"{checkpoint_files[-1].name}_{checkpoint_files[-1].stat().st_mtime}"
+
+    # Load/reload predictor if the checkpoint has changed
+    if _predictor is None or latest_cp_key != _loaded_model_checkpoint:
         model_card = artifacts / "global_model" / "model_card.json"
         if model_card.exists():
             try:
                 from src.prediction.predictor import GlobalModelPredictor
                 _predictor = GlobalModelPredictor.from_artifacts(str(artifacts))
-                logger.info("GlobalModelPredictor loaded from artifacts")
+                _loaded_model_checkpoint = latest_cp_key
+                logger.info("GlobalModelPredictor loaded/reloaded. Active checkpoint: %s", latest_cp_key)
             except Exception as e:
-                logger.warning("GlobalModelPredictor not available: %s", e)
+                logger.warning("GlobalModelPredictor load failed: %s", e)
 
-    # --- Load KGQueryEngine ---
-    if _kg_query is None:
-        kg_path = artifacts / "knowledge_graph" / "enriched_graph.graphml"
+    # --- Check for Knowledge Graph Updates ---
+    kg_path = artifacts / "knowledge_graph" / "enriched_graph.graphml"
+    kg_mtime = kg_path.stat().st_mtime if kg_path.exists() else None
+
+    # Load/reload KG query engine if the graph has changed
+    if _kg_query is None or kg_mtime != _loaded_kg_mtime:
         if kg_path.exists():
             try:
                 import networkx as nx
@@ -107,9 +125,10 @@ def _load_pipeline():
                 graph = nx.read_graphml(str(kg_path))
                 schema = KGSchema("configs/kg_config.yaml")
                 _kg_query = KGQueryEngine(graph, schema)
-                logger.info("KGQueryEngine loaded from %s", kg_path)
+                _loaded_kg_mtime = kg_mtime
+                logger.info("KGQueryEngine loaded/reloaded. Active mtime: %s", kg_mtime)
             except Exception as e:
-                logger.warning("KGQueryEngine not available: %s", e)
+                logger.warning("KGQueryEngine load failed: %s", e)
 
 
 def _compute_risk_score(
@@ -125,27 +144,33 @@ def _compute_risk_score(
     """
     global _predictor
 
-    if _predictor is not None:
-        try:
-            df = pd.DataFrame([{
-                "Time": 0,
-                "V1": 0.0, "V2": 0.0, "V3": 0.0, "V4": 0.0,
-                "V5": 0.0, "V6": 0.0, "V7": 0.0, "V8": 0.0,
-                "V9": 0.0, "V10": 0.0, "V11": 0.0, "V12": 0.0,
-                "V13": 0.0, "V14": 0.0, "V15": 0.0, "V16": 0.0,
-                "V17": 0.0, "V18": 0.0, "V19": 0.0, "V20": 0.0,
-                "V21": 0.0, "V22": 0.0, "V23": 0.0, "V24": 0.0,
-                "V25": 0.0, "V26": 0.0, "V27": 0.0, "V28": 0.0,
-                "Amount": amount,
-                "Class": 0,
-            }])
-            result_df = _predictor.predict(df)
-            risk = float(result_df["fraud_risk_score"].iloc[0])
-        except Exception as e:
-            logger.warning("ML prediction failed: %s", e)
-            risk = 0.02
-    else:
-        risk = 0.02
+    if _predictor is None:
+        raise HTTPException(
+            status_code=503,
+            detail="The latest LiteFraudNet global model is not loaded. Please verify that a model checkpoint exists in the registry."
+        )
+
+    try:
+        df = pd.DataFrame([{
+            "Time": 0,
+            "V1": 0.0, "V2": 0.0, "V3": 0.0, "V4": 0.0,
+            "V5": 0.0, "V6": 0.0, "V7": 0.0, "V8": 0.0,
+            "V9": 0.0, "V10": 0.0, "V11": 0.0, "V12": 0.0,
+            "V13": 0.0, "V14": 0.0, "V15": 0.0, "V16": 0.0,
+            "V17": 0.0, "V18": 0.0, "V19": 0.0, "V20": 0.0,
+            "V21": 0.0, "V22": 0.0, "V23": 0.0, "V24": 0.0,
+            "V25": 0.0, "V26": 0.0, "V27": 0.0, "V28": 0.0,
+            "Amount": amount,
+            "Class": 0,
+        }])
+        result_df = _predictor.predict(df)
+        risk = float(result_df["fraud_risk_score"].iloc[0])
+    except Exception as e:
+        logger.error("ML prediction failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"LiteFraudNet inference execution error: {str(e)}"
+        )
 
     risk = max(0.0, min(1.0, risk))
 
