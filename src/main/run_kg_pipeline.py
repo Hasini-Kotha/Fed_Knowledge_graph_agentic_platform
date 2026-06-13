@@ -28,6 +28,7 @@ from src.kg.kg_enricher import KGEnricher
 from src.kg.kg_query import KGQueryEngine
 from src.kg.kg_analytics import KGAnalytics
 from src.prediction.predictor import GlobalModelPredictor
+from src.data.preprocess import ClientPreprocessor
 
 logging.basicConfig(
     level=logging.INFO,

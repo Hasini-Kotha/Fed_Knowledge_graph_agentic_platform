@@ -38,8 +38,10 @@ export default function SystemPage() {
   const [mcp, setMcp] = useState<MCPStatus[]>([])
   const [kg, setKg] = useState<KGStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     async function load() {
       const [f, m, k] = await Promise.all([
         api.getFLStatus(),
@@ -125,39 +127,41 @@ export default function SystemPage() {
           </div>
         </div>
         <div className="h-52 min-h-[200px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis
-                dataKey="round"
-                tick={{ fill: "#64748b", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis
-                domain={[80, 100]}
-                tick={{ fill: "#64748b", fontSize: 10 }}
-                axisLine={false}
-                tickLine={false}
-                width={40}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: "#0d1526",
-                  border: "1px solid #1e293b",
-                  borderRadius: 6,
-                  fontSize: 12,
-                }}
-              />
-              <Line
-                type="monotone"
-                dataKey="accuracy"
-                stroke="#06b6d4"
-                strokeWidth={2}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {mounted && (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <XAxis
+                  dataKey="round"
+                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  interval="preserveStartEnd"
+                />
+                <YAxis
+                  domain={[80, 100]}
+                  tick={{ fill: "#64748b", fontSize: 10 }}
+                  axisLine={false}
+                  tickLine={false}
+                  width={40}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: "#0d1526",
+                    border: "1px solid #1e293b",
+                    borderRadius: 6,
+                    fontSize: 12,
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="accuracy"
+                  stroke="#06b6d4"
+                  strokeWidth={2}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </div>
 

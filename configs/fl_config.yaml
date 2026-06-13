@@ -6,7 +6,7 @@ lr: 0.001
 min_available_clients: 3
 min_evaluate_clients: 3
 min_fit_clients: 3
-num_rounds: 5
+num_rounds: 10
 secure_update:
   max_norm: 1.0
   noise_multiplier: 0.0

@@ -8,8 +8,9 @@ import {
   BrainCircuit,
   ArrowUpRight,
   ArrowDownRight,
+  Activity,
 } from "lucide-react"
-import ChatbotWidget from "@/components/chatbot-widget"
+
 import {
   PieChart,
   Pie,
@@ -61,6 +62,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<SystemStats | null>(null)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [loading, setLoading] = useState(true)
+  const [mounted, setMounted] = useState(false)
 
   async function load() {
     const [s, a] = await Promise.all([
@@ -82,6 +84,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    setMounted(true)
     let cancelled = false
     async function firstLoad() {
       await load()
@@ -108,35 +111,39 @@ export default function DashboardPage() {
     )
   }
 
-  const pieData = stats
-    ? [
-        { name: "Approved", value: stats.approvalBreakdown.approvedPercent },
-        { name: "Flagged", value: stats.approvalBreakdown.flaggedPercent },
-        { name: "Blocked", value: stats.approvalBreakdown.blockedPercent },
-      ]
-    : []
+  const pieData = [
+    { name: "Allowed", value: stats?.approvalBreakdown.approvedPercent ?? 0 },
+    { name: "Flagged", value: stats?.approvalBreakdown.flaggedPercent ?? 0 },
+    { name: "Blocked", value: stats?.approvalBreakdown.blockedPercent ?? 0 },
+  ]
 
   return (
     <div className="space-y-6 animate-fadeIn">
       {/* Page Header */}
-      <div>
-        <h1 className="text-xl font-semibold text-[#f1f5f9]">Dashboard</h1>
-        <p className="text-sm text-[#64748b] mt-0.5">
-          Real-time fraud intelligence overview
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-[#f1f5f9]">Dashboard</h1>
+          <p className="text-sm text-[#64748b] mt-0.5">
+            Real-time fraud detection metrics and agent execution logs
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-[#0d1526]/50 border border-[#1e293b] rounded-full px-3 py-1.5">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          <span className="text-xs font-mono text-[#94a3b8]">System Live</span>
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCard(
-          "Fraud Detection Rate",
-          `${stats?.fraudRate.toFixed(1)}%`,
-          <TrendingUp size={16} />,
-          { dir: "up", label: "+0.3% this week" },
+          "Total Transactions",
+          (stats?.totalTransactions ?? 0).toLocaleString(),
+          <Activity size={16} />,
+          { dir: "up", label: "+12.4% vs last hour" },
           "cyan-400"
         )}
         {statCard(
-          "Auto-Blocked Today",
+          "Blocked Today",
           (stats?.blockedToday ?? 0).toLocaleString(),
           <ShieldBan size={16} />,
           { dir: "up", label: "+2.4% vs yesterday" },
@@ -170,32 +177,34 @@ export default function DashboardPage() {
             total transactions
           </p>
           <div className="h-48 min-h-[180px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={48}
-                  outerRadius={68}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {pieData.map((_, i) => (
-                    <Cell key={i} fill={COLORS[i]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: "#0d1526",
-                    border: "1px solid #1e293b",
-                    borderRadius: 6,
-                    fontSize: 11,
-                  }}
-                  formatter={(v) => [`${Number(v).toFixed(1)}%`]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {mounted && (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={48}
+                    outerRadius={68}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    {pieData.map((_, i) => (
+                      <Cell key={i} fill={COLORS[i]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{
+                      background: "#0d1526",
+                      border: "1px solid #1e293b",
+                      borderRadius: 6,
+                      fontSize: 11,
+                    }}
+                    formatter={(v) => [`${Number(v).toFixed(1)}%`]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
           <div className="flex justify-center gap-4 mt-1">
             {pieData.map((d, i) => (
@@ -309,7 +318,6 @@ export default function DashboardPage() {
           </table>
         </div>
       </div>
-      <ChatbotWidget />
     </div>
   )
 }

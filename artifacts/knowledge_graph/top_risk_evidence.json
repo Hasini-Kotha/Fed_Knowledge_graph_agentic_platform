@@ -1,287 +1,132 @@
 [
   {
-    "transaction_id": "txn_33818",
-    "risk_score": 0.8919077515602112,
-    "risk_tier": "high",
-    "ground_truth": 0,
-    "neighborhood_risk": 0.10336589385084355,
-    "neighbor_count": 55,
-    "amount": 42.8,
-    "timestamp": 84216.0,
-    "connected_entities": {
-      "HAS_AMOUNT_BUCKET": "micro"
-    },
-    "connected_high_risk_count": 1,
-    "similar_flagged_transactions": [
-      {
-        "id": "txn_17438",
-        "risk_score": 4.3330024368515296e-07,
-        "risk_tier": "low",
-        "similarity": 0.9932960271835327
-      },
-      {
-        "id": "txn_17823",
-        "risk_score": 1.6616095308563672e-05,
-        "risk_tier": "low",
-        "similarity": 0.9882349967956543
-      },
-      {
-        "id": "txn_40813",
-        "risk_score": 5.876931936654728e-07,
-        "risk_tier": "low",
-        "similarity": 0.9867901802062988
-      },
-      {
-        "id": "txn_21237",
-        "risk_score": 0.7742070555686951,
-        "risk_tier": "high",
-        "similarity": 0.9844874739646912
-      },
-      {
-        "id": "txn_10649",
-        "risk_score": 2.99084859989307e-07,
-        "risk_tier": "low",
-        "similarity": 0.9758163690567017
-      }
-    ],
-    "community": {
-      "community_id": 0,
-      "size": 744,
-      "avg_risk": 0.060734819928850894,
-      "max_risk": 0.8919077515602112,
-      "high_risk_count": 54,
-      "high_risk_ratio": 0.07258064516129033
-    },
-    "time_window_context": {},
-    "model_prediction": "FRAUD",
-    "evidence_summary": "This transaction has a fraud risk score of 0.892 (high risk). Its 55 behaviorally similar peer(s) have an average fraud risk of 0.103. Connected entities: HAS_AMOUNT_BUCKET: micro. It is directly connected to 1 high-risk transaction(s). It shares behavioural patterns with 5 similar transaction(s) (avg similarity: 0.99, of which 1 are high-risk). It belongs to behavioural cluster #0 (size: 744, 54 confirmed fraud = 7% fraud rate \u2014 ELEVATED cluster)."
-  },
-  {
-    "transaction_id": "txn_9203",
-    "risk_score": 0.8828474283218384,
-    "risk_tier": "high",
+    "transaction_id": "txn_0",
+    "risk_score": 0.004246832802891731,
+    "risk_tier": "low",
     "ground_truth": 1,
-    "neighborhood_risk": 0.19918233463665652,
-    "neighbor_count": 55,
-    "amount": 2.0,
-    "timestamp": 85181.0,
-    "connected_entities": {
-      "HAS_AMOUNT_BUCKET": "micro"
-    },
-    "connected_high_risk_count": 2,
-    "similar_flagged_transactions": [
-      {
-        "id": "txn_24643",
-        "risk_score": 4.338921371527249e-06,
-        "risk_tier": "low",
-        "similarity": 0.9778227210044861
-      },
-      {
-        "id": "txn_26455",
-        "risk_score": 4.81449978906312e-06,
-        "risk_tier": "low",
-        "similarity": 0.9747402667999268
-      },
-      {
-        "id": "txn_19866",
-        "risk_score": 5.50404047316988e-06,
-        "risk_tier": "low",
-        "similarity": 0.9743938446044922
-      },
-      {
-        "id": "txn_31337",
-        "risk_score": 0.8742552995681763,
-        "risk_tier": "high",
-        "similarity": 0.9711027145385742
-      },
-      {
-        "id": "txn_9291",
-        "risk_score": 5.087442332296632e-06,
-        "risk_tier": "low",
-        "similarity": 0.9697855114936829
-      }
-    ],
-    "community": {
-      "community_id": 0,
-      "size": 744,
-      "avg_risk": 0.060734819928850894,
-      "max_risk": 0.8919077515602112,
-      "high_risk_count": 54,
-      "high_risk_ratio": 0.07258064516129033
-    },
-    "time_window_context": {},
-    "model_prediction": "FRAUD",
-    "evidence_summary": "This transaction has a fraud risk score of 0.883 (high risk). Its 55 behaviorally similar peer(s) have an average fraud risk of 0.199. Connected entities: HAS_AMOUNT_BUCKET: micro. It is directly connected to 2 high-risk transaction(s). It shares behavioural patterns with 5 similar transaction(s) (avg similarity: 0.97, of which 1 are high-risk). It belongs to behavioural cluster #0 (size: 744, 54 confirmed fraud = 7% fraud rate \u2014 ELEVATED cluster)."
-  },
-  {
-    "transaction_id": "txn_31337",
-    "risk_score": 0.8742552995681763,
-    "risk_tier": "high",
-    "ground_truth": 1,
-    "neighborhood_risk": 0.2141422685284503,
-    "neighbor_count": 67,
-    "amount": 1.0,
-    "timestamp": 82289.0,
-    "connected_entities": {
-      "HAS_AMOUNT_BUCKET": "micro"
-    },
-    "connected_high_risk_count": 4,
-    "similar_flagged_transactions": [
-      {
-        "id": "txn_9203",
-        "risk_score": 0.8828474283218384,
-        "risk_tier": "high",
-        "similarity": 0.9711027145385742
-      },
-      {
-        "id": "txn_5756",
-        "risk_score": 0.7938212752342224,
-        "risk_tier": "high",
-        "similarity": 0.9708017706871033
-      },
-      {
-        "id": "txn_12818",
-        "risk_score": 1.4544740224664565e-05,
-        "risk_tier": "low",
-        "similarity": 0.9669157862663269
-      },
-      {
-        "id": "txn_24643",
-        "risk_score": 4.338921371527249e-06,
-        "risk_tier": "low",
-        "similarity": 0.9609211683273315
-      },
-      {
-        "id": "txn_37466",
-        "risk_score": 0.00011210340016987175,
-        "risk_tier": "low",
-        "similarity": 0.9583815336227417
-      }
-    ],
-    "community": {
-      "community_id": 0,
-      "size": 744,
-      "avg_risk": 0.060734819928850894,
-      "max_risk": 0.8919077515602112,
-      "high_risk_count": 54,
-      "high_risk_ratio": 0.07258064516129033
-    },
-    "time_window_context": {},
-    "model_prediction": "FRAUD",
-    "evidence_summary": "This transaction has a fraud risk score of 0.874 (high risk). Its 67 behaviorally similar peer(s) have an average fraud risk of 0.214. Connected entities: HAS_AMOUNT_BUCKET: micro. It is directly connected to 4 high-risk transaction(s). It shares behavioural patterns with 5 similar transaction(s) (avg similarity: 0.97, of which 2 are high-risk). It belongs to behavioural cluster #0 (size: 744, 54 confirmed fraud = 7% fraud rate \u2014 ELEVATED cluster)."
-  },
-  {
-    "transaction_id": "txn_30923",
-    "risk_score": 0.8738495707511902,
-    "risk_tier": "high",
-    "ground_truth": 1,
-    "neighborhood_risk": 0.5605968827218673,
-    "neighbor_count": 52,
-    "amount": 0.76,
-    "timestamp": 40918.0,
-    "connected_entities": {
-      "HAS_AMOUNT_BUCKET": "micro"
-    },
-    "connected_high_risk_count": 13,
-    "similar_flagged_transactions": [
-      {
-        "id": "txn_36216",
-        "risk_score": 0.8606895208358765,
-        "risk_tier": "high",
-        "similarity": 0.9923691749572754
-      },
-      {
-        "id": "txn_27885",
-        "risk_score": 0.832772970199585,
-        "risk_tier": "high",
-        "similarity": 0.9903405904769897
-      },
-      {
-        "id": "txn_18861",
-        "risk_score": 0.8561936020851135,
-        "risk_tier": "high",
-        "similarity": 0.9898608922958374
-      },
-      {
-        "id": "txn_6054",
-        "risk_score": 0.8238686323165894,
-        "risk_tier": "high",
-        "similarity": 0.9808436632156372
-      },
-      {
-        "id": "txn_19442",
-        "risk_score": 0.837780237197876,
-        "risk_tier": "high",
-        "similarity": 0.978744626045227
-      }
-    ],
-    "community": {
-      "community_id": 0,
-      "size": 744,
-      "avg_risk": 0.060734819928850894,
-      "max_risk": 0.8919077515602112,
-      "high_risk_count": 54,
-      "high_risk_ratio": 0.07258064516129033
-    },
-    "time_window_context": {},
-    "model_prediction": "FRAUD",
-    "evidence_summary": "This transaction has a fraud risk score of 0.874 (high risk). Its 52 behaviorally similar peer(s) have an average fraud risk of 0.561. Connected entities: HAS_AMOUNT_BUCKET: micro. It is directly connected to 13 high-risk transaction(s). It shares behavioural patterns with 5 similar transaction(s) (avg similarity: 0.99, of which 5 are high-risk). It belongs to behavioural cluster #0 (size: 744, 54 confirmed fraud = 7% fraud rate \u2014 ELEVATED cluster)."
-  },
-  {
-    "transaction_id": "txn_37841",
-    "risk_score": 0.8720027208328247,
-    "risk_tier": "high",
-    "ground_truth": 1,
-    "neighborhood_risk": 0.3138674667391716,
-    "neighbor_count": 52,
-    "amount": 247.86,
-    "timestamp": 153653.0,
+    "neighborhood_risk": 0.0,
+    "neighbor_count": 0,
+    "amount": 364.19,
+    "timestamp": 41505.0,
     "connected_entities": {
       "HAS_AMOUNT_BUCKET": "medium"
     },
-    "connected_high_risk_count": 5,
-    "similar_flagged_transactions": [
-      {
-        "id": "txn_29545",
-        "risk_score": 2.714724814723013e-06,
-        "risk_tier": "low",
-        "similarity": 0.9887027740478516
-      },
-      {
-        "id": "txn_10634",
-        "risk_score": 0.8663513660430908,
-        "risk_tier": "high",
-        "similarity": 0.9885927438735962
-      },
-      {
-        "id": "txn_0",
-        "risk_score": 0.8613173365592957,
-        "risk_tier": "high",
-        "similarity": 0.9885462522506714
-      },
-      {
-        "id": "txn_21026",
-        "risk_score": 5.081678295937309e-07,
-        "risk_tier": "low",
-        "similarity": 0.9834017753601074
-      },
-      {
-        "id": "txn_22580",
-        "risk_score": 3.126452156720916e-06,
-        "risk_tier": "low",
-        "similarity": 0.9821354150772095
-      }
-    ],
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [],
     "community": {
       "community_id": 0,
-      "size": 744,
-      "avg_risk": 0.060734819928850894,
-      "max_risk": 0.8919077515602112,
-      "high_risk_count": 54,
-      "high_risk_ratio": 0.07258064516129033
+      "size": 1,
+      "avg_risk": 0.004246832802891731,
+      "max_risk": 0.004246832802891731,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
     },
     "time_window_context": {},
-    "model_prediction": "FRAUD",
-    "evidence_summary": "This transaction has a fraud risk score of 0.872 (high risk). Its 52 behaviorally similar peer(s) have an average fraud risk of 0.314. Connected entities: HAS_AMOUNT_BUCKET: medium. It is directly connected to 5 high-risk transaction(s). It shares behavioural patterns with 5 similar transaction(s) (avg similarity: 0.99, of which 2 are high-risk). It belongs to behavioural cluster #0 (size: 744, 54 confirmed fraud = 7% fraud rate \u2014 ELEVATED cluster)."
+    "model_prediction": "LEGITIMATE",
+    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #0 (size: 1, no confirmed fraud in cluster)."
+  },
+  {
+    "transaction_id": "txn_1",
+    "risk_score": 0.004246832802891731,
+    "risk_tier": "low",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.0,
+    "neighbor_count": 0,
+    "amount": 520.12,
+    "timestamp": 44261.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "medium"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [],
+    "community": {
+      "community_id": 1,
+      "size": 1,
+      "avg_risk": 0.004246832802891731,
+      "max_risk": 0.004246832802891731,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "time_window_context": {},
+    "model_prediction": "LEGITIMATE",
+    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #1 (size: 1, no confirmed fraud in cluster)."
+  },
+  {
+    "transaction_id": "txn_2",
+    "risk_score": 0.004246832802891731,
+    "risk_tier": "low",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.0,
+    "neighbor_count": 0,
+    "amount": 31.0,
+    "timestamp": 35484.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "micro"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [],
+    "community": {
+      "community_id": 2,
+      "size": 1,
+      "avg_risk": 0.004246832802891731,
+      "max_risk": 0.004246832802891731,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "time_window_context": {},
+    "model_prediction": "LEGITIMATE",
+    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #2 (size: 1, no confirmed fraud in cluster)."
+  },
+  {
+    "transaction_id": "txn_3",
+    "risk_score": 0.004246832802891731,
+    "risk_tier": "low",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.0,
+    "neighbor_count": 0,
+    "amount": 1.5,
+    "timestamp": 167123.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "micro"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [],
+    "community": {
+      "community_id": 3,
+      "size": 1,
+      "avg_risk": 0.004246832802891731,
+      "max_risk": 0.004246832802891731,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "time_window_context": {},
+    "model_prediction": "LEGITIMATE",
+    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #3 (size: 1, no confirmed fraud in cluster)."
+  },
+  {
+    "transaction_id": "txn_4",
+    "risk_score": 0.004246832802891731,
+    "risk_tier": "low",
+    "ground_truth": 0,
+    "neighborhood_risk": 0.0,
+    "neighbor_count": 0,
+    "amount": 0.89,
+    "timestamp": 168473.0,
+    "connected_entities": {
+      "HAS_AMOUNT_BUCKET": "micro"
+    },
+    "connected_high_risk_count": 0,
+    "similar_flagged_transactions": [],
+    "community": {
+      "community_id": 4,
+      "size": 1,
+      "avg_risk": 0.004246832802891731,
+      "max_risk": 0.004246832802891731,
+      "high_risk_count": 0,
+      "high_risk_ratio": 0.0
+    },
+    "time_window_context": {},
+    "model_prediction": "LEGITIMATE",
+    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #4 (size: 1, no confirmed fraud in cluster)."
   }
 ]

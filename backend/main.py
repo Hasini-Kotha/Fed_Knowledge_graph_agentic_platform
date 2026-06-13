@@ -7,13 +7,17 @@ Frontend config (frontend/src/lib/config.ts):
     USE_MOCK = true   → flip to false to hit these real endpoints
 """
 
+# Load .env FIRST — before any other import reads os.environ
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv()   # reads .env from CWD (project root)
+
 import logging
 import os
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.routers import scan, batch, decisions, dashboard, system, explain
+from backend.routers import scan, batch, decisions, dashboard, system, explain, admin
 from backend.decision_store import DB_PATH
 
 logging.basicConfig(
@@ -29,7 +33,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,6 +45,7 @@ app.include_router(decisions.router)
 app.include_router(dashboard.router)
 app.include_router(system.router)
 app.include_router(explain.router)
+app.include_router(admin.router)
 
 
 @app.get("/api/health")

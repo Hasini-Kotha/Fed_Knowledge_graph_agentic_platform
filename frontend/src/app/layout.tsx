@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
-import { Sidebar } from "@/components/sidebar"
-import { Topbar } from "@/components/topbar"
+import { LayoutWrapper } from "@/components/layout-wrapper"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -21,12 +20,8 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased">
-        <Sidebar />
-        <Topbar />
-        <main className="ml-56 pt-14 min-h-screen">
-          <div className="p-6 max-w-7xl mx-auto">{children}</div>
-        </main>
+      <body className="antialiased bg-[#020617] text-slate-100">
+        <LayoutWrapper>{children}</LayoutWrapper>
       </body>
     </html>
   )
