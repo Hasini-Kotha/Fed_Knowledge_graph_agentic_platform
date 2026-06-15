@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import List, Optional
 
 from backend.models import DecisionResult, Factor
+import os
 
 logger = logging.getLogger(__name__)
-DB_PATH = Path("artifacts/actions/decisions.db")
+DB_PATH = Path(os.environ.get("DECISIONS_DB_PATH", "artifacts/actions/decisions.db"))
 _LOCAL = threading.local()
 _INIT_LOCK = threading.Lock()
 _INITIALIZED = False

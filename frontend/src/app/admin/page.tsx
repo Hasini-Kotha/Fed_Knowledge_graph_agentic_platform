@@ -837,42 +837,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* TAB 4: MODEL REGISTRY */}
-      {activeTab === "registry" && (
-        <div className="space-y-4">
-          <div className="text-sm font-semibold text-slate-200">Global Model Snapshots</div>
-          <div className="overflow-x-auto border border-slate-800 rounded-xl bg-slate-900/20">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-slate-800 bg-slate-900/40 text-[10px] font-mono uppercase text-slate-400 tracking-wider">
-                  <th className="p-4">Model ID</th>
-                  <th className="p-4">Round</th>
-                  <th className="p-4">Created At</th>
-                  <th className="p-4">Disk Snapshot Path</th>
-                  <th className="p-4">Eval Accuracy</th>
-                  <th className="p-4">Loss</th>
-                  <th className="p-4 text-center">Hosts</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 text-xs">
-                {registry.map((m) => (
-                  <tr key={m.model_id} className="hover:bg-slate-900/10">
-                    <td className="p-4 font-mono font-bold text-slate-200">{m.model_id}</td>
-                    <td className="p-4 font-mono text-rose-500 font-bold">Round {m.round_number}</td>
-                    <td className="p-4 text-slate-400 font-mono">{new Date(m.created_at).toLocaleString()}</td>
-                    <td className="p-4 font-mono text-[#94a3b8] truncate max-w-[240px] select-all" title={m.snapshot_path}>
-                      {m.snapshot_path}
-                    </td>
-                    <td className="p-4 font-mono text-emerald-400 font-bold">{(m.accuracy * 100).toFixed(2)}%</td>
-                    <td className="p-4 font-mono text-rose-400">{m.loss.toFixed(4)}</td>
-                    <td className="p-4 font-mono text-center text-slate-300 font-semibold">{m.participating_client_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+
 
       {/* TAB 5: AUDIT LOGS */}
       {activeTab === "logs" && (

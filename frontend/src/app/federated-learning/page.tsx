@@ -243,7 +243,7 @@ export default function ClientFLPanel() {
       
       const contentDisp = res.headers.get("content-disposition") || ""
       const fnMatch = contentDisp.match(/filename="?([^"]+)"?/)
-      const filename = fnMatch ? fnMatch[1] : `local_trained_weights_R${roundStatus?.current_round ?? 1}.bin`
+      const filename = fnMatch ? fnMatch[1] : `local_trained_weights_${clientId}_R${roundStatus?.current_round ?? 1}.bin`
 
       const newFile = new File([blob], filename, { type: "application/octet-stream" })
       setSelectedFile(newFile)

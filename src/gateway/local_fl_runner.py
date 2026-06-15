@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.preprocess import ClientPreprocessor
 from src.models.Fed_model import create_model
-from src.models.train_engine import train_one_round
+from src.models.train_engine import train_one_round, save_local_checkpoint
 
 logging.basicConfig(
     level=logging.INFO,
@@ -192,6 +192,14 @@ def train_local(client_id: str, split_name: str, model_config: dict,
     logger.info("[%s] Local train done | PR-AUC=%.4f", client_id,
                 metrics.get("pr_auc", 0.0))
 
+    # Prove local model storage: Save the checkpoint locally to the bank's directory
+    checkpoint_dir = ARTIFACTS_DIR / "checkpoints" / client_id
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / f"local_model_round_{current_round}.pt"
+    
+    save_local_checkpoint(model, None, metrics, str(checkpoint_path))
+    logger.info("[%s] Saved local model checkpoint to: %s", client_id, checkpoint_path)
+
     weights_as_lists = [p.cpu().numpy().tolist() for p in params]
     return weights_as_lists, int(len(X_train))
 
@@ -262,30 +270,44 @@ def reset_server_state():
 # Main FL loop
 # ---------------------------------------------------------------------------
 
+import argparse
+
 def run():
+    parser = argparse.ArgumentParser(description="Local FL Runner for a specific bank")
+    parser.add_argument("--bank", type=str, help="Client ID to run (e.g., bank_a, bank_b, bank_c)")
+    args = parser.parse_args()
+
     # Load configs
     with open("configs/fl_config.yaml")    as f: fl_config    = yaml.safe_load(f)
     with open("configs/model_config.yaml") as f: model_config = yaml.safe_load(f)
 
     num_rounds = fl_config.get("num_rounds", 10)
 
+    active_clients = CLIENTS
+    if args.bank:
+        active_clients = [c for c in CLIENTS if c["client_id"] == args.bank]
+        if not active_clients:
+            logger.error("Bank %s not found in CLIENTS", args.bank)
+            return
+
     logger.info("=" * 60)
-    logger.info("LOCAL FL RUNNER — %d rounds, %d clients", num_rounds, len(CLIENTS))
+    logger.info("LOCAL FL RUNNER — %d rounds, %d clients", num_rounds, len(active_clients))
     logger.info("=" * 60)
 
-    # Reset in-memory FL round state on the gateway
-    reset_server_state()
+    # Only reset server state if running all or running Admin
+    if not args.bank:
+        reset_server_state()
 
-    # Step 1: Register all clients (idempotent)
+    # Step 1: Register clients (idempotent)
     logger.info("--- Step 1: Registering clients ---")
-    for client in CLIENTS:
+    for client in active_clients:
         register_client(client)
 
     # Step 2: FL rounds
     for round_num in range(1, num_rounds + 1):
         logger.info("\n--- Round %d / %d ---", round_num, num_rounds)
 
-        for client in CLIENTS:
+        for client in active_clients:
             cid      = client["client_id"]
             split    = CLIENT_DATA_MAP[cid]
             token    = login(client)

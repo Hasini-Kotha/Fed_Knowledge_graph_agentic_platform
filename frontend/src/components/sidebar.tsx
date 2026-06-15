@@ -119,7 +119,6 @@ function AdminSidebar() {
     { tab: "overview", label: "Overview & Stats", icon: LayoutDashboard },
     { tab: "clients", label: "Clients Console", icon: Users },
     { tab: "rounds", label: "FL Rounds History", icon: Cpu },
-    { tab: "registry", label: "Model Registry", icon: Database },
     { tab: "logs", label: "Audit Ledger", icon: Terminal },
   ]
 

@@ -27,8 +27,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import os
 
-DB_PATH = Path("artifacts/gateway/fl_gateway.db")
+DB_PATH = Path(os.environ.get("GATEWAY_DB_PATH", "artifacts/gateway/fl_gateway.db"))
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 logger = logging.getLogger(__name__)

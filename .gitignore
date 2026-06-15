@@ -2,6 +2,8 @@
 # These should be regenerated or computed from source data
 
 # Client split outputs (regenerated from source)
+.next_*/
+
 data/splits/*.csv
 data/splits/*.json
 data/splits_p2p/*.csv

@@ -102,10 +102,18 @@ FINAL_MODEL_PATH  = GLOBAL_MODEL_DIR / "FINAL_global_model.pt"
 # Reset after each round completes and aggregation fires.
 # ---------------------------------------------------------------------------
 # WARNING: Do not import this object from other modules.
-# Use get_current_round_from_db() for cross-service queries (e.g., admin dashboard).
-# This dict is an in-process performance cache for the gateway only.
+# Use get_current_round_from_db() for cross-service queries.
+
+def _get_initial_round() -> int:
+    try:
+        round_info = db.get_current_round_from_db()
+        return round_info["round_number"]
+    except Exception as e:
+        logger.error("Failed to load current round from DB: %s", e)
+        return 1
+
 _round_state: Dict[str, Any] = {
-    "current_round":   1,
+    "current_round":   _get_initial_round(),
     "expected_clients": 3,
     "submissions": {},   # { client_id: { "weights": List[np.ndarray], "n_samples": int } }
 }
@@ -977,7 +985,7 @@ async def train_local_sandbox(
     return FileResponse(
         path=str(tmp_path),
         media_type="application/octet-stream",
-        filename=f"local_trained_weights_R{current_round}.bin"
+        filename=f"local_trained_weights_{client_id}_R{current_round}.bin"
     )
 
 
