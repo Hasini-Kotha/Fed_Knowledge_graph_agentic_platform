@@ -234,11 +234,11 @@ class LiteFraudNet(nn.Module):
         """Overwrite model parameters from an aggregated server list."""
         for param, new_param in zip(self.parameters(), parameters):
             if isinstance(new_param, torch.Tensor):
-                param.data = new_param.data.clone()
+                param.data = new_param.data.clone().to(dtype=param.dtype)
             elif isinstance(new_param, np.ndarray):
-                param.data = torch.from_numpy(new_param).clone()
+                param.data = torch.from_numpy(new_param).clone().to(dtype=param.dtype)
             else:
-                param.data = torch.tensor(new_param).clone()
+                param.data = torch.tensor(new_param).clone().to(dtype=param.dtype)
 
     def __repr__(self) -> str:  # type: ignore[override]
         total = sum(p.numel() for p in self.parameters())

@@ -128,7 +128,7 @@ class GlobalModelPredictor:
             ckpt = torch.load(str(final_model_path), map_location=device, weights_only=False)
             params = ckpt.get("parameters", ckpt.get("weights", None))
             if params is not None:
-                model.set_parameters([torch.tensor(np.array(p)) for p in params])
+                model.set_parameters([torch.tensor(np.array(p), dtype=torch.float32) for p in params])
                 logger.info("Loaded weights from FINAL_global_model.pt")
             else:
                 model.load_state_dict(ckpt.get("model_state", ckpt))
@@ -138,8 +138,11 @@ class GlobalModelPredictor:
             ckpt = torch.load(str(best_ckpt_path), map_location=device, weights_only=False)
             params = ckpt.get("parameters", ckpt.get("weights", None))
             if params is not None:
-                model.set_parameters([torch.tensor(np.array(p)) for p in params])
-            logger.info("Loaded weights from %s", best_ckpt_path.name)
+                model.set_parameters([torch.tensor(np.array(p), dtype=torch.float32) for p in params])
+                logger.info("Loaded weights from %s", best_ckpt_path.name)
+            else:
+                model.load_state_dict(ckpt.get("model_state", ckpt))
+                logger.info("Loaded state_dict from %s", best_ckpt_path.name)
         else:
             logger.warning(
                 "No checkpoint found — using randomly initialized model weights. "
@@ -211,4 +214,3 @@ class GlobalModelPredictor:
             f"threshold={self.threshold:.2f}, "
             f"device={self.device})"
         )
- 

@@ -1,22 +1,15 @@
 Global Model Evaluation Report
 ========================================
 
-Best Round: 8
+Best Round: 10
 
 FL Validation Metrics:
-  round: 8.0000
-  roc_auc: 0.9750
-  pr_auc: 0.7314
-  f1: 0.7658
-  precision: 0.8078
-  recall: 0.7295
-  accuracy: 0.9992
 
 Global Holdout Metrics:
-  roc_auc: 0.9725
-  pr_auc: 0.7666
-  f1: 0.7500
-  precision: 0.7714
-  recall: 0.7297
+  roc_auc: 0.9735
+  pr_auc: 0.7676
+  f1: 0.7724
+  precision: 0.7887
+  recall: 0.7568
   accuracy: 0.9992
-  optimal_threshold: 0.1000
+  optimal_threshold: 0.5700

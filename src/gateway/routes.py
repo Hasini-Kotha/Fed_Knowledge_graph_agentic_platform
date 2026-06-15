@@ -305,12 +305,37 @@ def get_global_weights(client_id: str = Depends(get_current_client)):
         raw_weights = ckpt.get("weights", ckpt.get("parameters", []))
         logger.info("[%s] Serving global weights from FINAL_global_model.pt.", client_id)
     else:
-        # Round 1 and no checkpoint yet — serve zero-initialized weights
-        raw_weights = [np.zeros(shape, dtype=np.float32) for shape in EXPECTED_SHAPES]
+        # Round 1: no checkpoint exists — serve properly randomized weights from a new model
         logger.info(
-            "[%s] Round 1: no checkpoint exists — serving zero-initialized weights.",
+            "[%s] Round 1: no checkpoint exists — generating randomized initial weights.",
             client_id,
         )
+        import yaml
+        from src.models import create_model
+        try:
+            with open("configs/model_config.yaml") as f:
+                model_config = yaml.safe_load(f)
+            input_dim = EXPECTED_SHAPES[0][1] if len(EXPECTED_SHAPES) > 0 else 64
+            temp_model = create_model(input_dim=input_dim, config=model_config)
+            raw_weights = [p.cpu().numpy() for p in temp_model.get_parameters()]
+            logger.info("[%s] Successfully generated randomized initial weights.", client_id)
+        except Exception as e:
+            logger.critical(
+                "[%s] CRITICAL: Failed to generate initial randomized weights: %s. "
+                "The configs/model_config.yaml file may be missing or corrupt. "
+                "Aborting to prevent training on zero-weights.",
+                client_id, e,
+            )
+            import datetime as _dt
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": True,
+                    "code": "INITIALIZATION_FAILED",
+                    "message": "Gateway initialization failed. Please wait while the administrator restores configuration files.",
+                    "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                },
+            )
 
     encrypted = encrypt_weights(raw_weights)
     return GlobalWeightsResponse(
@@ -374,7 +399,32 @@ def get_global_model_binary(client_id: str = Depends(get_current_client)):
         ckpt = torch.load(str(FINAL_MODEL_PATH), map_location="cpu", weights_only=False)
         raw_weights = ckpt.get("weights", ckpt.get("parameters", []))
     else:
-        raw_weights = [np.zeros(shape, dtype=np.float32) for shape in EXPECTED_SHAPES]
+        logger.info("[%s] Generating on-demand binary from randomized initial weights.", client_id)
+        import yaml
+        from src.models import create_model
+        try:
+            with open("configs/model_config.yaml") as f:
+                model_config = yaml.safe_load(f)
+            input_dim = EXPECTED_SHAPES[0][1] if len(EXPECTED_SHAPES) > 0 else 64
+            temp_model = create_model(input_dim=input_dim, config=model_config)
+            raw_weights = [p.cpu().numpy() for p in temp_model.get_parameters()]
+        except Exception as e:
+            logger.critical(
+                "[%s] CRITICAL: Failed to generate on-demand global model binary: %s. "
+                "The configs/model_config.yaml file may be missing or corrupt. "
+                "Aborting to prevent serving zero-weights.",
+                client_id, e,
+            )
+            import datetime as _dt
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": True,
+                    "code": "INITIALIZATION_FAILED",
+                    "message": "Gateway initialization failed. Please wait while the administrator restores configuration files.",
+                    "timestamp": _dt.datetime.utcnow().isoformat() + "Z",
+                },
+            )
 
     enc_str = encrypt_weights(raw_weights)
     GLOBAL_MODEL_DIR.mkdir(parents=True, exist_ok=True)
@@ -646,6 +696,35 @@ def round_status(client_id: str = Depends(get_current_client)):
 
 
 # ---------------------------------------------------------------------------
+# GET /fl/submission-status/{submission_id}
+# ---------------------------------------------------------------------------
+
+@router.get("/fl/submission-status/{submission_id}")
+def get_submission_status(
+    submission_id: str,
+    client_id: str = Depends(get_current_client),
+):
+    db_sess = db.SessionLocal()
+    try:
+        sub = db_sess.query(db.Submission).filter(db.Submission.submission_id == submission_id).first()
+        if not sub:
+            raise HTTPException(status_code=404, detail="Submission not found")
+        if sub.client_id != client_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this submission")
+        
+        return {
+            "submission_id": sub.submission_id,
+            "validation_status": sub.validation_status,
+            "hmac_verified": sub.hmac_verified,
+            "shape_valid": sub.shape_valid,
+            "nan_inf_clean": sub.nan_inf_clean,
+            "rejection_reason": sub.rejection_reason,
+        }
+    finally:
+        db_sess.close()
+
+
+# ---------------------------------------------------------------------------
 # POST /fl/submit-weights  — Multipart file upload (Step 9C frontend panel)
 # ---------------------------------------------------------------------------
 
@@ -790,6 +869,116 @@ async def submit_weights_multipart(
         "status": "accepted",
         "message": f"{received}/{expected} clients submitted for round {current_round}.",
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /fl/client/train-local — Local Sandbox Training
+# ---------------------------------------------------------------------------
+
+@router.post("/fl/client/train-local")
+async def train_local_sandbox(
+    client_id: str = Depends(get_current_client),
+    file: UploadFile = File(...),
+):
+    """Local Sandbox: Train model on uploaded CSV and return encrypted weights."""
+    import yaml
+    from io import StringIO
+    from src.data.preprocess import ClientPreprocessor
+    from src.models import create_model
+    from src.models.train_engine import train_one_round
+    from src.gateway.encryption import encrypt_weights, sign_payload
+
+    rs = _round_state
+    current_round = rs["current_round"]
+
+    # 1. Read CSV
+    try:
+        content = await file.read()
+        df = pd.read_csv(StringIO(content.decode("utf-8")))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid CSV format: {e}")
+
+    # 2. Load Preprocessor
+    client_prefix = client_id.replace("bank", "client")  # bank_a -> client_a
+    prep_path = ARTIFACTS_DIR / "preprocessors" / f"{client_prefix}_preprocessor.pkl"
+    if not prep_path.exists():
+        prep_path = ARTIFACTS_DIR / "preprocessors" / "global_preprocessor.pkl"
+    if not prep_path.exists():
+        raise HTTPException(status_code=500, detail="No preprocessor found.")
+    preprocessor = ClientPreprocessor.load(str(prep_path))
+
+    # 3. Transform Data
+    try:
+        X_np, y_np = preprocessor.transform(df)
+        X_train = torch.tensor(X_np, dtype=torch.float32)
+        y_train = torch.tensor(y_np, dtype=torch.float32)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Data transformation failed: {e}")
+
+    # 4. Load Model Config
+    try:
+        with open("configs/model_config.yaml") as f:
+            model_config = yaml.safe_load(f)
+        with open("configs/fl_config.yaml") as f:
+            fl_config = yaml.safe_load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Missing config: {e}")
+
+    # 5. Initialize Model & Load Global Weights
+    input_dim = preprocessor.get_feature_dim()
+    model = create_model(input_dim, model_config)
+
+    prev_ckpt = GLOBAL_MODEL_DIR / f"round_{(current_round - 1):03d}_checkpoint.pt"
+    if current_round > 1 and prev_ckpt.exists():
+        ckpt = torch.load(str(prev_ckpt), map_location="cpu", weights_only=False)
+        params = ckpt.get("weights", ckpt.get("parameters", []))
+        model.set_parameters([torch.tensor(p) for p in params])
+    elif FINAL_MODEL_PATH.exists():
+        ckpt = torch.load(str(FINAL_MODEL_PATH), map_location="cpu", weights_only=False)
+        params = ckpt.get("weights", ckpt.get("parameters", []))
+        if params:
+            model.set_parameters([torch.tensor(p) for p in params])
+
+    # 6. Train locally
+    train_config = {
+        "epochs": fl_config.get("local_epochs", 3),
+        "batch_size": fl_config.get("batch_size", 256),
+        "lr": fl_config.get("lr", 0.001),
+        "mu": fl_config.get("fedprox_mu", 0.01),
+        "optimizer": model_config.get("optimizer", "adamw"),
+    }
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    train_config["epochs"] = min(train_config["epochs"], 2) # Speed up demo
+
+    logger.info("[%s] Local Sandbox Training Started. Rows: %d", client_id, len(df))
+    params, metrics = train_one_round(
+        model=model,
+        X_train=X_train,
+        y_train=y_train,
+        train_config=train_config,
+        device=device
+    )
+    logger.info("[%s] Local Sandbox Training Finished. Loss: %.4f", client_id, metrics.get("train_loss", 0))
+
+    # 7. Encrypt and Sign Weights
+    np_weights = [p.cpu().numpy().astype(np.float32) for p in params]
+    encrypted_payload = encrypt_weights(np_weights)
+    signature = sign_payload(client_id, current_round, encrypted_payload)
+
+    # 8. Return binary file
+    final_blob = (signature + encrypted_payload).encode("utf-8")
+    
+    import uuid
+    tmp_path = ARTIFACTS_DIR / "temp_local_weights" / f"{client_id}_{uuid.uuid4().hex}.bin"
+    tmp_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path.write_bytes(final_blob)
+
+    return FileResponse(
+        path=str(tmp_path),
+        media_type="application/octet-stream",
+        filename=f"local_trained_weights_R{current_round}.bin"
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -20,6 +20,10 @@ Usage:
     python src/gateway/local_fl_runner.py
 """
 
+# Load .env FIRST — before any other import reads os.environ
+from dotenv import load_dotenv as _load_dotenv
+_load_dotenv()   # reads .env from CWD (project root)
+
 import logging
 import sys
 import time
@@ -134,7 +138,7 @@ def fetch_global_weights(token: str, client_id: str) -> list:
     from src.gateway.encryption import decrypt_weights
     
     resp = requests.get(
-        f"{GATEWAY_URL}/fl/global-model",
+        f"{GATEWAY_URL}/fl/global-weights",
         headers={"Authorization": f"Bearer {token}"},
         timeout=30,
     )

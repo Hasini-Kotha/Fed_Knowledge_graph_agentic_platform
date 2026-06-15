@@ -1,8 +1,9 @@
-batch_size: 256
+batch_size: 64
+fedprox_mu: 0.000275
 fraction_evaluate: 1.0
 fraction_fit: 1.0
-local_epochs: 3
-lr: 0.001
+local_epochs: 12
+lr: 0.0019
 min_available_clients: 3
 min_evaluate_clients: 3
 min_fit_clients: 3

@@ -13,9 +13,9 @@
   },
   "enrichment_stats": {
     "total_transactions": 42721,
-    "avg_risk_score": 0.004246832802891731,
-    "max_risk_score": 0.004246832802891731,
-    "min_risk_score": 0.004246832802891731,
+    "avg_risk_score": 0.3340308666229248,
+    "max_risk_score": 0.3340308666229248,
+    "min_risk_score": 0.3340308666229248,
     "std_risk_score": 0.0,
     "risk_tiers": {
       "high": 0,
@@ -43,31 +43,31 @@
     {
       "id": "txn_0",
       "centrality": 0.0,
-      "risk_score": 0.004246832802891731,
+      "risk_score": 0.3340308666229248,
       "risk_tier": "low"
     },
     {
       "id": "txn_1",
       "centrality": 0.0,
-      "risk_score": 0.004246832802891731,
+      "risk_score": 0.3340308666229248,
       "risk_tier": "low"
     },
     {
       "id": "txn_2",
       "centrality": 0.0,
-      "risk_score": 0.004246832802891731,
+      "risk_score": 0.3340308666229248,
       "risk_tier": "low"
     },
     {
       "id": "txn_3",
       "centrality": 0.0,
-      "risk_score": 0.004246832802891731,
+      "risk_score": 0.3340308666229248,
       "risk_tier": "low"
     },
     {
       "id": "txn_4",
       "centrality": 0.0,
-      "risk_score": 0.004246832802891731,
+      "risk_score": 0.3340308666229248,
       "risk_tier": "low"
     }
   ],

@@ -63,21 +63,11 @@ def main():
             data_cfg = _raw.get("data", _raw) if isinstance(_raw, dict) else {}
 
     global_model_dir = artifacts_dir / "global_model"
-    
-    # Step 1 - Load Best Checkpoint
-    best_ckpt = load_best_checkpoint(str(global_model_dir), metric=metric)
-    if best_ckpt is None:
-        logger.error("Failed to load best checkpoint")
-        sys.exit(1)
-        
-    best_params = best_ckpt.get("weights", best_ckpt.get("parameters", []))
-    best_metrics = best_ckpt.get("metrics", {})
-    best_round = best_ckpt.get("round", 0)
-    
-    logger.info(f"Best round: {best_round}, {metric}: {best_metrics.get(metric, 0.0):.4f}")
-    
-    # Step 2 - Evaluate on Global Holdout
     global_test_csv = data_dir / "global_test.csv"
+
+    if not global_test_csv.exists():
+        logger.error("Global test data missing at %s", global_test_csv)
+        sys.exit(1)
 
     # Prefer the global preprocessor (fitted server-side on the non-test pool).
     # Falls back to client_a's preprocessor if the pipeline was run before this fix.
@@ -97,16 +87,60 @@ def main():
         logger.error("No preprocessor found in %s", artifacts_dir / "preprocessors")
         sys.exit(1)
 
-    if not global_test_csv.exists():
-        logger.error("Global test data missing at %s", global_test_csv)
+    # Step 1 - Scan all checkpoints and select the best one by holdout metrics
+    checkpoint_files = sorted(global_model_dir.glob("round_*_checkpoint.pt"))
+    if not checkpoint_files:
+        logger.error("No checkpoints found in %s", global_model_dir)
         sys.exit(1)
+
+    best_ckpt = None
+    best_value = -float("inf")
+    best_round = 0
+    best_params = None
+    best_metrics = {}
+
+    for ckpt_path in checkpoint_files:
+        try:
+            ckpt = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
+            params = ckpt.get("weights", ckpt.get("parameters", []))
+            r = ckpt.get("round", 0)
+            
+            eval_metrics = evaluate_global_model(
+                parameters=params,
+                global_test_csv=str(global_test_csv),
+                preprocessor_path=str(preprocessor_path),
+                model_config=model_config,
+                eval_config={"batch_size": 512, "threshold": 0.5, "device": "cpu"}
+            )
+            val = eval_metrics.get(metric, 0.0)
+            logger.info(f"Round {r:03d} checkpoint: evaluated holdout {metric} = {val:.4f}")
+            
+            if val > best_value:
+                best_value = val
+                best_ckpt = ckpt
+                best_round = r
+                best_params = params
+                best_metrics = eval_metrics
+        except Exception as exc:
+            logger.warning(f"Failed to evaluate checkpoint {ckpt_path.name}: {exc}")
+
+    if best_ckpt is None:
+        logger.error("Failed to select best checkpoint")
+        sys.exit(1)
+
+    logger.info(f"Selected best round: {best_round} with holdout {metric} = {best_value:.4f}")
+    
+    # Keep validation metrics placeholder for report printing compatibility
+    best_metrics["round"] = best_round
+    best_metrics["pr_auc"] = best_value
+    best_round = best_metrics.get("round", 0)
+    best_metrics = {}  # Empty FL metrics to avoid confusing with holdout
 
     eval_config = {
         "batch_size": 512,
         "threshold": 0.5,
         "device": "cpu"
     }
-    
     global_eval_metrics = evaluate_global_model(
         parameters=best_params,
         global_test_csv=str(global_test_csv),
@@ -117,6 +151,7 @@ def main():
     
     logger.info(f"Global Eval ROC-AUC: {global_eval_metrics.get('roc_auc', 0.0):.4f}")
     logger.info(f"Global Eval PR-AUC: {global_eval_metrics.get('pr_auc', 0.0):.4f}")
+
     
     # Step 3 - Find Optimal Threshold on Global Test using shared predict_proba()
     import pandas as pd

@@ -47,6 +47,16 @@ app.include_router(system.router)
 app.include_router(explain.router)
 app.include_router(admin.router)
 
+# Mount FL Gateway routes on the same backend to avoid CORS/port issues
+try:
+    from src.gateway.database import init_db
+    init_db()  # Initialize the gateway SQLite database
+    from src.gateway.routes import router as gateway_router
+    app.include_router(gateway_router, prefix="")
+    logging.info("FL Gateway routes mounted successfully on main backend.")
+except Exception as e:
+    logging.error("Failed to mount FL Gateway routes: %s", e)
+
 
 @app.get("/api/health")
 async def health():

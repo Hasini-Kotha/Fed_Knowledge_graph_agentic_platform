@@ -63,6 +63,10 @@ export default function ClientFLPanel() {
     { name: "Data Integrity (NaN/Inf) Check", status: "pending", description: "Checks weights are clean and unpoisoned." }
   ])
 
+  // Local Training states
+  const [isCsv, setIsCsv] = useState(false)
+  const [trainState, setTrainState] = useState<"idle" | "training" | "done">("idle")
+
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -119,9 +123,10 @@ export default function ClientFLPanel() {
         fetch(`${GATEWAY_URL}/fl/round-status`, { headers }),
         fetch(`${GATEWAY_URL}/fl/my-submissions`, { headers }),
       ])
+      let fetchedRoundStatus = roundStatus
       if (roundRes.ok) {
-        const rs = await roundRes.json()
-        setRoundStatus(rs)
+        fetchedRoundStatus = await roundRes.json()
+        setRoundStatus(fetchedRoundStatus)
       } else {
         setErrorMsg("Could not fetch active round status from secure gateway.")
       }
@@ -130,9 +135,9 @@ export default function ClientFLPanel() {
         const subs: any[] = subData.submissions || []
         setSubmissions(subs)
         
-        if (roundStatus) {
+        if (fetchedRoundStatus) {
           const already = subs.some(
-            (s) => s.round_number === roundStatus.current_round && s.validation_status !== "REJECTED"
+            (s) => s.round_number === fetchedRoundStatus.current_round && s.validation_status !== "REJECTED"
           )
           setAlreadySubmittedThisRound(already)
         }
@@ -176,7 +181,7 @@ export default function ClientFLPanel() {
   }
 
   // Panel 3 — File Selection validation
-  const ALLOWED_EXTENSIONS = [".bin", ".pt", ".npz"]
+  const ALLOWED_EXTENSIONS = [".csv", ".bin", ".pt", ".npz"]
   const handleFileSelect = (file: File) => {
     if (file.size > 500 * 1024 * 1024) {
       setFileError("File size exceeds the maximum limit of 500MB.")
@@ -191,6 +196,8 @@ export default function ClientFLPanel() {
     }
     setFileError(null)
     setSelectedFile(file)
+    setIsCsv(ext === ".csv")
+    setTrainState("idle")
     setUploadState("idle")
     setRejectionReason(null)
     resetSteps()
@@ -209,6 +216,43 @@ export default function ClientFLPanel() {
       { name: "LiteFraudNet Tensor Shape Check", status: "pending", description: "Validates layer shapes match client model." },
       { name: "Data Integrity (NaN/Inf) Check", status: "pending", description: "Checks weights are clean and unpoisoned." }
     ])
+  }
+
+  // Panel 3 — Train Local Model
+  const handleTrainLocal = async () => {
+    if (!selectedFile || !token) return
+    setTrainState("training")
+    setFileError(null)
+
+    try {
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+
+      const res = await fetch(`${GATEWAY_URL}/fl/client/train-local`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        throw new Error(errData.detail || "Local training failed.")
+      }
+
+      const blob = await res.blob()
+      
+      const contentDisp = res.headers.get("content-disposition") || ""
+      const fnMatch = contentDisp.match(/filename="?([^"]+)"?/)
+      const filename = fnMatch ? fnMatch[1] : `local_trained_weights_R${roundStatus?.current_round ?? 1}.bin`
+
+      const newFile = new File([blob], filename, { type: "application/octet-stream" })
+      setSelectedFile(newFile)
+      setIsCsv(false)
+      setTrainState("done")
+    } catch (err: any) {
+      setFileError("Training error: " + err.message)
+      setTrainState("idle")
+    }
   }
 
   // Panel 3 — Submit Weight Update
@@ -256,7 +300,7 @@ export default function ClientFLPanel() {
       }
 
       if (!res.ok) {
-        const msg = data?.message || data?.detail || "Upload rejected."
+        const msg = data?.message || (typeof data?.detail === 'string' ? data.detail : data?.detail?.message) || "Upload rejected."
         setRejectionReason(msg)
         setUploadState("rejected")
         return
@@ -287,7 +331,16 @@ export default function ClientFLPanel() {
         const pollRes = await fetch(`${GATEWAY_URL}/fl/submission-status/${sid}`, {
           headers: { Authorization: `Bearer ${token}` },
         })
-        if (!pollRes.ok) return
+        if (!pollRes.ok) {
+          if (pollRes.status === 404 || pollRes.status === 403) {
+            if (pollRef.current) clearInterval(pollRef.current)
+            localStorage.removeItem("fl_last_submission_id")
+            localStorage.removeItem("fl_last_submission_round")
+            setUploadState("idle")
+            setSubmissionId(null)
+          }
+          return
+        }
         const pollData = await pollRes.json()
 
         // Update step-by-step progress cards
@@ -469,11 +522,11 @@ export default function ClientFLPanel() {
         )}
       </div>
 
-      {/* PANEL 3: Upload Weights & Polling step-by-step progress */}
+      {/* PANEL 3: Local Training & Upload Weights */}
       <div className="p-6 bg-slate-900/40 border border-slate-800/80 rounded-2xl space-y-5">
         <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
           <Upload className="w-5 h-5 text-cyan-400" />
-          Submit Updated Weights
+          Local Training & Submission
         </h2>
 
         {alreadySubmittedThisRound && uploadState !== "rejected" ? (
@@ -514,7 +567,7 @@ export default function ClientFLPanel() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".bin,.pt,.npz"
+                accept=".csv,.bin,.pt,.npz"
                 className="hidden"
                 onChange={(e) => { if (e.target.files?.[0]) handleFileSelect(e.target.files[0]) }}
               />
@@ -522,12 +575,13 @@ export default function ClientFLPanel() {
                 <div className="space-y-1">
                   <div className="text-cyan-400 font-bold text-sm">{selectedFile.name}</div>
                   <div className="text-slate-500 text-xs">{(selectedFile.size / (1024 * 1024)).toFixed(2)} MB</div>
+                  {trainState === "done" && <div className="text-emerald-400 text-xs font-bold mt-2">✅ Local model trained successfully! Ready to submit.</div>}
                 </div>
               ) : (
                 <div className="space-y-2">
                   <FileWarning className="w-8 h-8 text-slate-700 mx-auto" />
-                  <p className="text-xs text-slate-400">Drag & drop weights binary or click to select file</p>
-                  <p className="text-[10px] text-slate-600 font-mono">Max size: 500MB (Accepted formats: .bin, .pt, .npz)</p>
+                  <p className="text-xs text-slate-400">Drag & drop raw dataset (.csv) or weights binary (.bin)</p>
+                  <p className="text-[10px] text-slate-600 font-mono">Max size: 500MB (Accepted formats: .csv, .bin, .pt, .npz)</p>
                 </div>
               )}
             </div>
@@ -538,16 +592,27 @@ export default function ClientFLPanel() {
               </div>
             )}
 
-            {/* Submit button */}
-            <button
-              onClick={handleUpload}
-              disabled={!selectedFile || uploadState === "uploading" || uploadState === "validating"}
-              className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-slate-950 font-extrabold text-sm transition-all"
-            >
-              {uploadState === "uploading" ? "Uploading Payload…"
-                : uploadState === "validating" ? "Validating Update..."
-                : "Submit Update Package"}
-            </button>
+            {/* Submit / Train button */}
+            {isCsv ? (
+              <button
+                onClick={handleTrainLocal}
+                disabled={trainState === "training"}
+                className="w-full py-2.5 rounded-xl bg-indigo-500 hover:bg-indigo-400 disabled:opacity-40 text-white font-extrabold text-sm transition-all flex justify-center items-center gap-2"
+              >
+                {trainState === "training" ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Cpu className="w-4 h-4" />}
+                {trainState === "training" ? "Training Local Model... (Please wait)" : "Train Local Model"}
+              </button>
+            ) : (
+              <button
+                onClick={handleUpload}
+                disabled={!selectedFile || uploadState === "uploading" || uploadState === "validating"}
+                className="w-full py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-slate-950 font-extrabold text-sm transition-all flex justify-center items-center gap-2"
+              >
+                {uploadState === "uploading" ? "Uploading Payload…"
+                  : uploadState === "validating" ? "Validating Update..."
+                  : "Submit Update Package"}
+              </button>
+            )}
 
             {/* Polling step-by-step progress checks */}
             {(uploadState === "validating" || uploadState === "rejected") && (

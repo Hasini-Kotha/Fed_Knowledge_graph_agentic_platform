@@ -88,12 +88,47 @@ def _batch_predict_ml(rows: List[dict]) -> List[BatchRowResult]:
             if col == "Amount":
                 rec[col] = _get_float(row, "Amount", "amount")
             else:
-                rec[col] = _get_float(row, col)
+                rec[col] = _get_float(row, col, col.lower())
         records.append(rec)
 
     df = pd.DataFrame(records)
     result_df = predictor.predict(df)
     scores = result_df["fraud_risk_score"].values
+
+    # Extract feature vectors, embeddings, and norms for logging
+    import torch
+    try:
+        X_features, _ = predictor.preprocessor.transform(df)
+        X_tensor = torch.tensor(X_features, dtype=torch.float32)
+        with torch.no_grad():
+            embeddings = predictor.model.get_embeddings(X_tensor).cpu().numpy()
+            emb_norms = np.linalg.norm(embeddings, ord=2, axis=-1)
+    except Exception as e:
+        logger.error("Error extracting embeddings for debugging logs: %s", e)
+        X_features = []
+        embeddings = None
+        emb_norms = None
+
+    logger.info("=== BATCH PREDICTION AUDIT LOG ===")
+    for idx in range(min(5, len(rows))):
+        raw_row = rows[idx]
+        feat_vector = X_features[idx] if idx < len(X_features) else []
+        emb_norm = float(emb_norms[idx]) if emb_norms is not None and idx < len(emb_norms) else 0.0
+        score = float(scores[idx]) if idx < len(scores) else 0.0
+        decision = _scan_module._decide(score)
+        
+        # Log feature vector snippet (first 5 elements)
+        feat_snippet = [round(float(f), 4) for f in feat_vector[:5]] if len(feat_vector) >= 5 else [round(float(f), 4) for f in feat_vector]
+        logger.info(
+            f"Row {idx + 1} | "
+            f"Raw Keys: {list(raw_row.keys())} | "
+            f"Amount: {_get_float(raw_row, 'Amount', 'amount')} | "
+            f"Feature vector (first 5): {feat_snippet}... | "
+            f"Embedding norm: {emb_norm:.4f} | "
+            f"Risk score: {score:.4f} | "
+            f"Decision: {decision}"
+        )
+    logger.info("==================================")
 
     results: List[BatchRowResult] = []
     for i, row in enumerate(rows):

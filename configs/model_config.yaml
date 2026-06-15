@@ -1,4 +1,4 @@
-dropout_rate: 0.2
+dropout_rate: 0.1
 eval:
   batch_size: 512
   threshold: 0.5
@@ -38,7 +38,8 @@ numeric_cols:
 - Amount
 scaler_type: robust
 train:
-  batch_size: 256
+  batch_size: 64
   epochs: 5
-  lr: 0.001
+  lr: 0.0019
   seed: 42
+  weight_decay: 4.14e-05

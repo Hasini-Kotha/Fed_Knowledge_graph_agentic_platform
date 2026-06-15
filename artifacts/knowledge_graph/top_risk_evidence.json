@@ -1,7 +1,7 @@
 [
   {
     "transaction_id": "txn_0",
-    "risk_score": 0.004246832802891731,
+    "risk_score": 0.3340308666229248,
     "risk_tier": "low",
     "ground_truth": 1,
     "neighborhood_risk": 0.0,
@@ -16,18 +16,18 @@
     "community": {
       "community_id": 0,
       "size": 1,
-      "avg_risk": 0.004246832802891731,
-      "max_risk": 0.004246832802891731,
+      "avg_risk": 0.3340308666229248,
+      "max_risk": 0.3340308666229248,
       "high_risk_count": 0,
       "high_risk_ratio": 0.0
     },
     "time_window_context": {},
     "model_prediction": "LEGITIMATE",
-    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #0 (size: 1, no confirmed fraud in cluster)."
+    "evidence_summary": "This transaction has a fraud risk score of 0.334 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #0 (size: 1, no confirmed fraud in cluster)."
   },
   {
     "transaction_id": "txn_1",
-    "risk_score": 0.004246832802891731,
+    "risk_score": 0.3340308666229248,
     "risk_tier": "low",
     "ground_truth": 0,
     "neighborhood_risk": 0.0,
@@ -42,18 +42,18 @@
     "community": {
       "community_id": 1,
       "size": 1,
-      "avg_risk": 0.004246832802891731,
-      "max_risk": 0.004246832802891731,
+      "avg_risk": 0.3340308666229248,
+      "max_risk": 0.3340308666229248,
       "high_risk_count": 0,
       "high_risk_ratio": 0.0
     },
     "time_window_context": {},
     "model_prediction": "LEGITIMATE",
-    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #1 (size: 1, no confirmed fraud in cluster)."
+    "evidence_summary": "This transaction has a fraud risk score of 0.334 (low risk). Connected entities: HAS_AMOUNT_BUCKET: medium. It belongs to cluster #1 (size: 1, no confirmed fraud in cluster)."
   },
   {
     "transaction_id": "txn_2",
-    "risk_score": 0.004246832802891731,
+    "risk_score": 0.3340308666229248,
     "risk_tier": "low",
     "ground_truth": 0,
     "neighborhood_risk": 0.0,
@@ -68,18 +68,18 @@
     "community": {
       "community_id": 2,
       "size": 1,
-      "avg_risk": 0.004246832802891731,
-      "max_risk": 0.004246832802891731,
+      "avg_risk": 0.3340308666229248,
+      "max_risk": 0.3340308666229248,
       "high_risk_count": 0,
       "high_risk_ratio": 0.0
     },
     "time_window_context": {},
     "model_prediction": "LEGITIMATE",
-    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #2 (size: 1, no confirmed fraud in cluster)."
+    "evidence_summary": "This transaction has a fraud risk score of 0.334 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #2 (size: 1, no confirmed fraud in cluster)."
   },
   {
     "transaction_id": "txn_3",
-    "risk_score": 0.004246832802891731,
+    "risk_score": 0.3340308666229248,
     "risk_tier": "low",
     "ground_truth": 0,
     "neighborhood_risk": 0.0,
@@ -94,18 +94,18 @@
     "community": {
       "community_id": 3,
       "size": 1,
-      "avg_risk": 0.004246832802891731,
-      "max_risk": 0.004246832802891731,
+      "avg_risk": 0.3340308666229248,
+      "max_risk": 0.3340308666229248,
       "high_risk_count": 0,
       "high_risk_ratio": 0.0
     },
     "time_window_context": {},
     "model_prediction": "LEGITIMATE",
-    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #3 (size: 1, no confirmed fraud in cluster)."
+    "evidence_summary": "This transaction has a fraud risk score of 0.334 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #3 (size: 1, no confirmed fraud in cluster)."
   },
   {
     "transaction_id": "txn_4",
-    "risk_score": 0.004246832802891731,
+    "risk_score": 0.3340308666229248,
     "risk_tier": "low",
     "ground_truth": 0,
     "neighborhood_risk": 0.0,
@@ -120,13 +120,13 @@
     "community": {
       "community_id": 4,
       "size": 1,
-      "avg_risk": 0.004246832802891731,
-      "max_risk": 0.004246832802891731,
+      "avg_risk": 0.3340308666229248,
+      "max_risk": 0.3340308666229248,
       "high_risk_count": 0,
       "high_risk_ratio": 0.0
     },
     "time_window_context": {},
     "model_prediction": "LEGITIMATE",
-    "evidence_summary": "This transaction has a fraud risk score of 0.004 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #4 (size: 1, no confirmed fraud in cluster)."
+    "evidence_summary": "This transaction has a fraud risk score of 0.334 (low risk). Connected entities: HAS_AMOUNT_BUCKET: micro. It belongs to cluster #4 (size: 1, no confirmed fraud in cluster)."
   }
 ]

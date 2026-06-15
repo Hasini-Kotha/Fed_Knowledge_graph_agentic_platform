@@ -52,6 +52,8 @@ export function getVerifiedClaims(): any {
     localStorage.removeItem("user_role")
     localStorage.removeItem("bank_name")
     localStorage.removeItem("client_id")
+    localStorage.removeItem("fl_last_submission_id")
+    localStorage.removeItem("fl_last_submission_round")
     return null
   }
   return claims
@@ -108,6 +110,8 @@ function AdminSidebar() {
     localStorage.removeItem("user_role")
     localStorage.removeItem("bank_name")
     localStorage.removeItem("client_id")
+    localStorage.removeItem("fl_last_submission_id")
+    localStorage.removeItem("fl_last_submission_round")
     router.push("/login")
   }
 
@@ -213,6 +217,8 @@ function ClientSidebar() {
     localStorage.removeItem("user_role")
     localStorage.removeItem("bank_name")
     localStorage.removeItem("client_id")
+    localStorage.removeItem("fl_last_submission_id")
+    localStorage.removeItem("fl_last_submission_round")
     setRole(null)
     setClientName(null)
     router.push("/login")

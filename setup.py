@@ -24,12 +24,13 @@ with open("configs/data_config.yaml", "w") as f:
 model_config = {
     "numeric_cols": ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount"],
     "hidden_dims": [64, 32],
-    "dropout_rate": 0.2,
+    "dropout_rate": 0.10,
     "scaler_type": "robust",
     "train": {
         "epochs": 5,
-        "batch_size": 256,
-        "lr": 0.001,
+        "batch_size": 64,
+        "lr": 0.0019,
+        "weight_decay": 4.14e-05,
         "seed": 42
     },
     "eval": {
@@ -47,9 +48,10 @@ fl_config = {
     "min_fit_clients": 3,
     "min_evaluate_clients": 3,
     "min_available_clients": 3,
-    "local_epochs": 3,
-    "batch_size": 256,
-    "lr": 0.001,
+    "local_epochs": 12,
+    "batch_size": 64,
+    "lr": 0.0019,
+    "fedprox_mu": 0.000275,
     "secure_update": {
         "max_norm": 1.0,
         "noise_multiplier": 0.0,
