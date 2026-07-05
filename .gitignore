@@ -84,3 +84,8 @@ htmlcov/
 *.so
 *.dylib
 *.dll
+
+# Ignore generated databases and massive Knowledge Graphs
+artifacts/
+*.db
+*.graphml

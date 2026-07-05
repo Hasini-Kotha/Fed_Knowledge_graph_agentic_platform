@@ -73,6 +73,16 @@ This guide provides instructions to set up and run the 4-node concurrent Proof o
    python setup.py
    ```
 
+4. **Environment Configuration:**
+   Copy the example environment file to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+   **Important:** Open `.env` and ensure `ADMIN_SEED_PASSWORD` is set to `AdminSecure123!` so that it matches the mock credentials below. You must also set a 32-character random string for `FL_GATEWAY_SECRET`.
+
+5. **(Optional) Full Dataset Setup:**
+   By default, the repository runs on small, pre-included sample files in the `data/` folder. If you wish to train models from scratch on the full datasets, place your downloaded CSV files into the `Sample_datasets/` directory (e.g., `Sample_datasets/credit-card-1/creditcard.csv`) or `data/raw/`. These directories are git-ignored to prevent large file uploads.
+
 ### 3. Running the 4-Node POC Demo
 
 We have included an automated PowerShell script that compiles the frontend for production (saving RAM) and automatically spins up 4 independent Python servers and 4 independent Node.js servers (simulating an Admin and 3 Banks).
@@ -97,9 +107,9 @@ Once the servers are running, open your browser and navigate to the nodes:
 | Node | URL | Login (Username) | Password |
 |---|---|---|---|
 | **Admin Control Room** | [http://localhost:3000](http://localhost:3000) | `admin` | `AdminSecure123!` |
-| **Bank A** | [http://localhost:3001](http://localhost:3001) | `bank_a` | `BankA_Secure1!` |
-| **Bank B** | [http://localhost:3002](http://localhost:3002) | `bank_b` | `BankB_Secure2@` |
-| **Bank C** | [http://localhost:3003](http://localhost:3003) | `bank_c` | `BankC_Secure3#` |
+| **Bank A** | [http://localhost:3001](http://localhost:3001) | `bank_a` | `BankAlpha123!` |
+| **Bank B** | [http://localhost:3002](http://localhost:3002) | `bank_b` | `BankBeta123!` |
+| **Bank C** | [http://localhost:3003](http://localhost:3003) | `bank_c` | `BankGamma123!` |
 
 ### 5. Stopping the Demo & Troubleshooting
 
@@ -113,12 +123,23 @@ Once the servers are running, open your browser and navigate to the nodes:
 
 ---
 
+## 📖 Developer Documentation
+
+For an in-depth understanding of the platform's internal mechanics, architecture, and deployment strategies, please refer to the comprehensive guides in the `Developer_readme/` directory:
+
+- [**Architecture Tutorial**](Developer_readme/ARCHITECTURE_TUTORIAL.md): Deep dive into the 5-layer architecture, component interactions, and system design.
+- [**Implementation Guide**](Developer_readme/IMPLEMENTATION_GUIDE.md): Technical details on how the system was built, API definitions, and security protocols.
+- [**Federated Learning Workflow**](Developer_readme/README_FL_WORKFLOW.md): Step-by-step breakdown of how the federated nodes communicate, train, and securely aggregate weights.
+- [**Data & Modeling Pipeline**](Developer_readme/Readme_preprocessing_to_global_model.md): Detailed explanation of data preprocessing, feature engineering, and global model evaluation.
+
+---
+
 ## 🎯 Applications & Validation
 
 This architecture is **domain-agnostic** and reusable across industries. 
 The same pipeline has been successfully applied and validated on:
-- **Financial Fraud Detection** (Dataset: IEEE-CIS | Setup: 3 Banks)
-- **Cybersecurity Threat Detection** (Dataset: UNSW-NB15 | Setup: 3 Enterprise Networks)
+- **Financial Fraud Detection** (Dataset: [IEEE-CIS](https://www.kaggle.com/c/ieee-fraud-detection) | Setup: 3 Banks)
+- **Cybersecurity Threat Detection** (Dataset: [UNSW-NB15](https://research.unsw.edu.au/projects/unsw-nb15-dataset) | Setup: 3 Enterprise Networks)
 - **Healthcare & Enterprise IT** (Theoretical expansions for patient privacy and infrastructure risk)
 
 ## Keywords
